@@ -1,0 +1,103 @@
+.tabs {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.tabBtn {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: var(--border-radius);
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.tabBtn.active {
+  background-color: var(--text-primary);
+  color: #fff;
+}
+
+.tabBtn:hover:not(.active) {
+  background-color: var(--bg-secondary);
+}
+
+.content {
+  background-color: #fff;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 1rem;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  resize: vertical;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent-base);
+}
+
+.fileArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem;
+  border: 2px dashed var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.recordArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem;
+}
+
+.recordControls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  text-align: center;
+}
+
+.recordBtn {
+  background-color: var(--text-accent);
+  color: #fff;
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  transition: transform 0.2s ease;
+}
+
+.recordBtn:hover {
+  transform: scale(1.05);
+}
+
+.recordBtn.recording {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(176, 92, 80, 0.4); }
+  70% { box-shadow: 0 0 0 20px rgba(176, 92, 80, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(176, 92, 80, 0); }
+}

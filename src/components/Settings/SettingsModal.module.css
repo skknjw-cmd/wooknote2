@@ -1,0 +1,114 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  width: 450px;
+  max-width: 90vw;
+  background-color: #f7f6f2; /* MUJI beige */
+  border-radius: var(--border-radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 1.5rem;
+  background-color: #fff;
+  border-bottom: 1px solid var(--bg-tertiary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.closeBtn {
+  font-size: 1.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.content {
+  padding: 1.5rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.info {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  background-color: #fff;
+  padding: 1rem;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--bg-tertiary);
+  margin-bottom: 1.5rem;
+}
+
+.group {
+  margin-bottom: 1rem;
+}
+
+.group label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.group input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  background-color: #fff;
+  font-size: 0.9rem;
+}
+
+.group input:focus {
+  outline: none;
+  border-color: var(--accent-base);
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--bg-tertiary);
+  margin: 1.5rem 0;
+}
+
+.footer {
+  padding: 1.25rem;
+  background-color: #fff;
+  border-top: 1px solid var(--bg-tertiary);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.saveBtn {
+  padding: 0.75rem 2rem;
+  background-color: var(--text-accent);
+  color: #fff;
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+}
+
+.saveBtn:hover {
+  opacity: 0.9;
+}

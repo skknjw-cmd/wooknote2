@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+
+:root {
+  /* MUJI Style Palette - Warm Neutrals */
+  --bg-primary: #F9F8F6;       /* Soft unbleached paper */
+  --bg-secondary: #F0EFEA;     /* Slightly darker beige for cards/sections */
+  --bg-tertiary: #E8E6E1;      /* Borders, hover states */
+  
+  --text-primary: #4A4643;     /* Deep warm grey, easier on eyes than solid black */
+  --text-secondary: #7A746D;   /* Muted text for descriptions */
+  --text-accent: #B05C50;      /* Gentle muted red/terracotta for highlights or errors */
+  
+  --accent-base: #867970;      /* Warm taupe for primary buttons/accents */
+  --accent-hover: #6E625A;
+  
+  --border-radius: 4px;        /* Muji uses very subtle, functional rounding */
+  --shadow-subtle: 0 2px 8px rgba(74, 70, 67, 0.05);
+}
+
+/* Light mode ONLY as requested (no dark mode overrides) */
+
+html {
+  height: 100%;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  /* Noto Sans KR for Korean, Outfit for Latin/Numbers */
+  font-family: 'Outfit', 'Noto Sans KR', -apple-system, sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+}
+
+input, textarea {
+  font-family: inherit;
+}

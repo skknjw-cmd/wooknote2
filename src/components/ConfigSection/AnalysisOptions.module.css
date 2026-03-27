@@ -1,0 +1,59 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  background-color: var(--bg-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.checkboxLabel:hover {
+  border-color: #d8d4cd;
+  background-color: #f5f4ef;
+}
+
+.checkboxLabel.checked {
+  border-color: var(--text-primary);
+  background-color: #f0ebe6;
+}
+
+.nativeCheckbox {
+  appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--text-secondary);
+  border-radius: 2px;
+  background-color: #fff;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nativeCheckbox:checked {
+  background-color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
+.nativeCheckbox:checked::after {
+  content: '✓';
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+.labelText {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}

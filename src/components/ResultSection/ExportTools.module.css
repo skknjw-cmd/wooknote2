@@ -1,0 +1,45 @@
+.container {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 2rem;
+}
+
+.btn {
+  padding: 0.75rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  border-radius: var(--border-radius);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btnSecondary {
+  background-color: #fff;
+  border: 1px solid var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.btnSecondary:hover {
+  background-color: var(--bg-secondary);
+}
+
+.btnPrimary {
+  background-color: var(--accent-base);
+  color: #fff;
+}
+
+.btnPrimary:hover {
+  background-color: var(--accent-hover);
+}
+
+.btnNotion {
+  background-color: #000;
+  color: #fff;
+}
+
+.btnNotion:hover {
+  opacity: 0.8;
+}
