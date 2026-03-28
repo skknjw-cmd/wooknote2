@@ -43,16 +43,28 @@ export default function InputTabs({ value, onChange }: Props) {
         setIsTranscribing(true);
         
         try {
-          // Immediate STT call for feedback
+          // Prepare the audio data
           const formData = new FormData();
           formData.append("media", blob);
           
+          // Read settings from localStorage for the API request
+          const savedSettings = localStorage.getItem("wooks_settings");
+          const settings = savedSettings ? JSON.parse(savedSettings) : {};
+          
+          const headers: Record<string, string> = {};
+          if (settings.clovaInvokeUrl) headers["x-clova-url"] = settings.clovaInvokeUrl;
+          if (settings.clovaSecretKey) headers["x-clova-key"] = settings.clovaSecretKey;
+
           const res = await fetch("/api/stt", {
             method: "POST",
+            headers: headers,
             body: formData,
           });
           
-          if (!res.ok) throw new Error("STT failed");
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || "STT failed");
+          }
           const data = await res.json();
           
           // Store the text instead of Blob for confirmation
