@@ -25,7 +25,7 @@ export default function SummaryBoard({ result }: Props) {
       return (
         <div className={styles.tableWrapper}>
           <table className={styles.actionTable}>
-            <thead>
+            <thead data-pdf-table-header>
               <tr>
                 <th>실행과제</th>
                 <th>담당자</th>
@@ -36,7 +36,7 @@ export default function SummaryBoard({ result }: Props) {
             </thead>
             <tbody>
               {content.map((row: any, i: number) => (
-                <tr key={i}>
+                <tr key={i} data-pdf-item>
                   <td>{row.task}</td>
                   <td>{row.owner}</td>
                   <td>{row.due}</td>
@@ -54,7 +54,7 @@ export default function SummaryBoard({ result }: Props) {
       return (
         <div className={styles.numberedContainer}>
           {content.map((item: any, i: number) => (
-            <div key={i} className={styles.numberedItem}>
+            <div key={i} data-pdf-item className={styles.numberedItem}>
               <div className={styles.numberedIndex}>
                 {(i + 1).toString().padStart(2, "0")}
               </div>
@@ -72,7 +72,7 @@ export default function SummaryBoard({ result }: Props) {
       return (
         <div className={styles.content}>
           {content.map((text: string, i: number) => (
-            <div key={i} className={styles.listItem}>
+            <div key={i} data-pdf-item className={styles.listItem}>
               <span className={styles.bullet}>•</span>
               <span>{text}</span>
             </div>
@@ -81,39 +81,44 @@ export default function SummaryBoard({ result }: Props) {
       );
     }
 
-    return <div className={styles.content}><p>{content}</p></div>;
+    return (
+      <div className={styles.content}>
+        <p data-pdf-item>{content}</p>
+      </div>
+    );
   };
 
   return (
     <div className={styles.container}>
       <div className={styles.resultCard}>
-        <div className={styles.section} style={{ textAlign: "center", marginBottom: "4rem" }}>
+        {/* Header Section (Title, Date, Attendees) */}
+        <div data-pdf-section className={styles.section} style={{ textAlign: "center", marginBottom: "4rem" }}>
           <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "1rem" }}>{result.title}</h1>
-          <p style={{ color: "#888", fontSize: "0.95rem", letterSpacing: "0.05em" }}>
+          <p style={{ color: "#888", fontSize: "0.95rem", letterSpacing: "0.05em", marginBottom: "2rem" }}>
             {result.date} {result.location && `| ${result.location}`}
           </p>
+
+          {/* Attendees moved to Header */}
+          {result.attendees.length > 0 && (
+            <div className={styles.attendees} style={{ justifyContent: "center", borderTop: "1px solid #eee", paddingTop: "1.5rem" }}>
+              <span style={{ fontSize: "0.85rem", color: "#888", marginRight: "10px", fontWeight: 600 }}>참석자:</span>
+              {result.attendees.map((a, i) => (
+                <span key={i} className={styles.attendeeTag}>{a}</span>
+              ))}
+            </div>
+          )}
         </div>
 
+        {/* Dynamic Analysis Sections */}
         {result.sections.map((sec, idx) => {
           const isCompact = sec.name.includes("요약") || sec.name.includes("정보");
           return (
-            <div key={idx} className={isCompact ? styles.compactSection : styles.section}>
+            <div key={idx} data-pdf-section className={isCompact ? styles.compactSection : styles.section}>
               <h2 className={styles.sectionHeader}>{sec.name}</h2>
               {renderSectionContent(sec)}
             </div>
           );
         })}
-        
-        {result.attendees.length > 0 && (
-          <div className={styles.compactSection}>
-            <h2 className={styles.sectionHeader}>참석자</h2>
-            <div className={styles.attendees}>
-              {result.attendees.map((a, i) => (
-                <span key={i} className={styles.attendeeTag}>{a}</span>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

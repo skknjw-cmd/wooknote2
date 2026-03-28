@@ -11,52 +11,65 @@ export async function POST(req: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Use gemini-2.5-flash as it is the available model for this API key
     const model = genAI.getGenerativeModel(
-      { model: "gemini-2.5-flash" },
+      { 
+        model: "gemini-2.5-flash",
+        generationConfig: {
+          temperature: 0.1, // 창의성 낮추고 일관성 극대화
+          topP: 0.95,
+          topK: 40,
+        }
+      },
       { apiVersion: "v1" }
     );
 
     const systemPrompt = `
-      당신은 전문적인 회의록 작성 전문가입니다. 
-      제공된 회의 내용(텍스트)을 분석하여 아래 요청된 항목들에 대해 정형화된 한국어 회의록을 작성해주세요.
-      
-      회의 제목: ${meetingInfo.title}
-      일시: ${meetingInfo.date}
-      장소: ${meetingInfo.location}
-      참석자: ${meetingInfo.attendees}
+    당신은 10년 경력의 전문 비즈니스 컨설턴트이자 회의록 작성 전문가입니다. 제공된 회의 내용을 바탕으로 전문적이고 구조화된 보고서를 JSON 형식으로 반환하세요.
+    
+    [핵심 지침]
+    1. 일관성: 모든 분석 항목은 객관적인 사실에 기반하여 일관된 깊이로 요약하세요.
+    2. 문체: 전문적인 개조식 어투(~함, ~임)를 사용하며, 절대 '합니다/입니다'를 섞지 마세요.
+    3. 구체성: 모호한 표현(예: 논의함, 검토함) 대신 구체적인 내용(예: ~에 대한 25% 인상안을 확정함)을 기술하세요.
 
-      분석 요청 항목: ${selectedOptions.join(", ")}
+    [데이터 구조 지침]
+    - title: 회의 제목
+    - date: 회의 일시
+    - attendees: 참석자 명단 (배열)
+    - sections: [{ name, type, content }]
+      - type: "numbered" | "table"
+      - content: 
+        - "numbered"일 경우: [{ title: "핵심 제목", description: "상세 내용" }]
+        - "table"일 경우 (To-Do List 전용): [{ task: "과제", owner: "담당자", due: "기한", prio: "우선순위", notes: "비고" }]
 
-      응답 형식은 반드시 아래와 같은 JSON 구조여야 합니다:
-      {
-        "title": "회의 제목",
-        "date": "회의 일시",
-        "location": "회의 장소",
-        "attendees": ["참석자1", "참석자2", ...],
-        "sections": [
-          { 
-            "name": "항목명 (예: 핵심요약, 참석자 분석, 아젠다별 주요 내용, TO-DO-LIST 등)", 
-            "type": "text | list | table | numbered",
-            "content": "타입에 따른 내용" 
-          }
-        ]
-      }
+    [서식 가이드]
+    1. 핵심요약, 아젠다, 리스크, 결정사항, 계획 등: 반드시 "numbered" 타입을 사용하세요.
+    2. 실행과제(To-Do List): 반드시 "table" 타입을 사용하세요.
 
-      타입별 가이드:
-      - "text": 긴 줄글 설명.
-      - "list": 단순 글머리 기호 리스트 (string[]).
-      - "numbered": (아젠다별 주요 내용, 미결정사항, 리스크/이슈 전용) 각 항목은 { "title": "항목 제목", "description": "상세 내용" } 객체의 배열.
-      - "table": (TO-DO-LIST 전용) 각 항목은 { "task": "실행과제", "owner": "담당자", "due": "기한", "prio": "우선순위", "notes": "비고" } 객체의 배열.
-      
-      중요 문체 및 형식 지침: 
-      1. 문체: 절대로 "~합니다", "~이었습니다" 등의 존댓말이나 서술형 문장을 사용하지 마십시오. 반드시 "**~하기로 함**", "**~을 확인함**", "**~될 예정임**", "**~할 계획임**"과 같은 **간결한 개조식/명사형 어투**를 사용하십시오.
-      2. '아젠다별 주요 내용', '미결정사항', '리스크/이슈'는 위 "numbered" 타입을 사용하여 제목과 내용을 분리하십시오.
-      3. 'TO-DO-LIST'는 반드시 "table" 타입을 사용하여 표 형식 데이터를 생성하십시오.
-      4. 모든 회의록은 비즈니스 환경에 적합한 전문적인 용어를 사용하십시오.
+    [모범 예시 (Few-Shot)]
+    {
+      "sections": [
+        {
+          "name": "주요 결정사항",
+          "type": "numbered",
+          "content": [{ "title": "공급가 인상 확정", "description": "원자재가 상승으로 인한 인상안 합의." }]
+        },
+        {
+          "name": "실행과제 (To-Do List)",
+          "type": "table",
+          "content": [{ "task": "계약서 수정", "owner": "홍길동", "due": "04/15", "prio": "상", "notes": "법무팀 검토 필요" }]
+        }
+      ]
+    }
+    
+    회의 정보:
+    - 제목: ${meetingInfo.title}
+    - 일시: ${meetingInfo.date}
+    - 참석자: ${meetingInfo.attendees}
+    
+    분석 요청 항목: ${selectedOptions.join(", ")}
     `;
 
-    const userPrompt = `다음은 회의 원문 내용입니다:\n\n${content}`;
+    const userPrompt = `다음 회의 내용을 바탕으로 위 지침에 따라 분석을 수행하세요:\n\n${content}`;
 
     const result = await model.generateContent([systemPrompt, userPrompt]);
     const responseText = result.response.text();

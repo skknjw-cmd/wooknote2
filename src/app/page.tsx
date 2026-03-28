@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 import InputTabs from "@/components/InputSection/InputTabs";
@@ -41,7 +41,31 @@ export default function Home() {
 
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Load temp data for "Redo"
+  useEffect(() => {
+    const saved = localStorage.getItem("wooks_temp_input");
+    if (saved) {
+      try {
+        const { meetingInfo: mi, selectedOptions: so, inputData: id } = JSON.parse(saved);
+        if (mi) setMeetingInfo(mi);
+        if (so) setSelectedOptions(so);
+        if (id) setInputData(id);
+      } catch (e) {
+        console.error("Temp data load error:", e);
+      }
+    }
+  }, []);
+
   const handleSubmit = async () => {
+    if (inputData.type !== "text" && !inputData.content) {
+      alert("회의 내용을 입력하거나 파일을 업로드/녹음해주세요.");
+      return;
+    }
+    
+    // Save current state for Redo
+    localStorage.setItem("wooks_temp_input", JSON.stringify({ meetingInfo, selectedOptions, inputData }));
+
+    setIsGenerating(true);
     if (inputData.type !== "text" && !inputData.content) {
       alert("회의 내용을 입력하거나 파일을 업로드/녹음해주세요.");
       return;

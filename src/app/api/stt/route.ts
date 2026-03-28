@@ -27,6 +27,11 @@ export async function POST(req: NextRequest) {
     const params = {
       language: "ko-KR",
       completion: "sync",
+      diarization: {
+        enable: true,
+        speakerCountMin: 1,
+        speakerCountMax: 10,
+      }
     };
     clovaFormData.append("params", JSON.stringify(params));
 
@@ -45,7 +50,16 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await response.json();
-    // data.text 
+    
+    // 화자 분리 정보가 있는 경우 세그먼트별로 포맷팅
+    if (data.segments && data.segments.length > 0) {
+      const formattedText = data.segments
+        .map((s: any) => `[화자 ${s.speaker?.label || s.speaker?.name || "알수없음"}] ${s.text}`)
+        .join("\n");
+      return NextResponse.json({ text: formattedText });
+    }
+
+    // 세그먼트가 없는 경우 기본 텍스트 반환
     return NextResponse.json({ text: data.text });
   } catch (error: any) {
     console.error("STT Route Error:", error);

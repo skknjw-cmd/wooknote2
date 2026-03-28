@@ -4,17 +4,18 @@ import React, { useEffect, useState, useRef } from "react";
 import styles from "./page.module.css";
 import SummaryBoard from "@/components/ResultSection/SummaryBoard";
 import ExportTools from "@/components/ResultSection/ExportTools";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from "docx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle, Header } from "docx";
 import { saveAs } from "file-saver";
 
 export default function ResultPage() {
   const router = useRouter();
   const [result, setResult] = useState<any>(null);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+  const [isWordGenerating, setIsWordGenerating] = useState(false);
+  const [isNotionSaving, setIsNotionSaving] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,74 +30,210 @@ export default function ResultPage() {
   const handleExportPDF = async () => {
     if (!result || !printRef.current) return;
     
-    setIsExporting(true);
+    setIsPdfGenerating(true);
     try {
-      const element = printRef.current;
-      const canvas = await html2canvas(element, {
-        scale: 2, // High resolution
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#f7f6f2" // MUJI beige
-      });
-      
-      const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF("p", "mm", "a4");
-      
-      const imgProps = pdf.getImageProperties(imgData);
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      const bottomLimit = pdfHeight - margin;
+      let currentY = margin;
+
+      const captureElement = async (el: HTMLElement) => {
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: "#ffffff",
+        });
+        const imgData = canvas.toDataURL("image/png");
+        const imgWidth = pdfWidth - (margin * 2);
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        return { imgData, imgHeight, imgWidth };
+      };
+
+      const sections = printRef.current.querySelectorAll("[data-pdf-section]");
+
+      for (let i = 0; i < sections.length; i++) {
+        const section = sections[i] as HTMLElement;
+        const items = section.querySelectorAll("[data-pdf-item]");
+        
+        // 1. 섹션 내에 쪼개진 아이템이 없는 경우 (예: 헤더 섹션) 전체를 한 번에 캡처
+        if (items.length === 0) {
+          const { imgData, imgHeight, imgWidth } = await captureElement(section);
+          if (currentY + imgHeight > bottomLimit) {
+            pdf.addPage();
+            currentY = margin;
+          }
+          pdf.addImage(imgData, "PNG", margin, currentY, imgWidth, imgHeight);
+          currentY += imgHeight + 8;
+          continue;
+        }
+
+        // 2. 섹션 헤더(제목 등) 우선 처리 (아이템이 있는 경우만)
+        const sectionHeader = section.querySelector("h2") || section.querySelector("div:first-child");
+        if (sectionHeader) {
+          const { imgData, imgHeight, imgWidth } = await captureElement(sectionHeader as HTMLElement);
+          if (currentY + imgHeight > bottomLimit) {
+            pdf.addPage();
+            currentY = margin;
+          }
+          pdf.addImage(imgData, "PNG", margin, currentY, imgWidth, imgHeight);
+          currentY += imgHeight + 2;
+        }
+
+        // 3. 섹션 내 아이템들 처리
+        const tableHeader = section.querySelector("[data-pdf-table-header]");
+        let tableHeaderImg: any = null;
+
+        if (tableHeader) {
+          tableHeaderImg = await captureElement(tableHeader as HTMLElement);
+        }
+
+        for (let j = 0; j < items.length; j++) {
+          const item = items[j] as HTMLElement;
+          const { imgData, imgHeight, imgWidth } = await captureElement(item);
+
+          if (currentY + imgHeight > bottomLimit) {
+            pdf.addPage();
+            currentY = margin;
+            // 표인 경우 새 페이지 상단에 헤더 반복
+            if (tableHeaderImg) {
+              pdf.addImage(tableHeaderImg.imgData, "PNG", margin, currentY, tableHeaderImg.imgWidth, tableHeaderImg.imgHeight);
+              currentY += tableHeaderImg.imgHeight;
+            }
+          }
+
+          pdf.addImage(imgData, "PNG", margin, currentY, imgWidth, imgHeight);
+          currentY += imgHeight;
+        }
+
+        currentY += 10; // 섹션 간 간격
+      }
       
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
       pdf.save(`${result.title}_회의록.pdf`);
     } catch (error) {
       console.error("PDF Export Error:", error);
       alert("PDF 생성 중 오류가 발생했습니다.");
     } finally {
-      setIsExporting(false);
+      setIsPdfGenerating(false);
     }
   };
 
   const handleExportWord = async () => {
     if (!result) return;
+    setIsWordGenerating(true);
     
-    const doc = new Document({
-      sections: [{
-        properties: {},
-        children: [
-          new Paragraph({
-            text: result.title,
-            heading: HeadingLevel.HEADING_1,
-            alignment: AlignmentType.CENTER,
-          }),
+    try {
+      const children: any[] = [
+        new Paragraph({
+          children: [
+            new TextRun({ text: result.title, bold: true, size: 48, font: "Malgun Gothic" })
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 800, after: 600 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({ text: `일시: ${result.date}`, bold: true, size: 22 }),
+            new TextRun({ text: `\n장소: ${result.location || "정보 없음"}`, break: 1, size: 22 }),
+            new TextRun({ text: `\n참석자: ${result.attendees.join(", ")}`, break: 1, size: 22 }),
+          ],
+          spacing: { after: 600 },
+        }),
+      ];
+
+      result.sections.forEach((sec: any) => {
+        children.push(
           new Paragraph({
             children: [
-              new TextRun({ text: `일시: ${result.date}`, size: "10pt" }),
-              new TextRun({ text: `\n참석자: ${result.attendees.join(", ")}`, size: "10pt" })
+              new TextRun({ text: sec.name, bold: true, size: 28, color: "333333" })
             ],
-            spacing: { after: 400 },
-          }),
-          ...result.sections.flatMap((sec: any) => [
-            new Paragraph({
-              text: sec.name,
-              heading: HeadingLevel.HEADING_2,
-              spacing: { before: 200, after: 100 },
-            }),
-            ...(Array.isArray(sec.content) 
-              ? sec.content.map((item: string) => new Paragraph({ text: item, bullet: { level: 0 } }))
-              : [new Paragraph({ text: sec.content })]
-            )
-          ])
-        ],
-      }],
-    });
+            spacing: { before: 500, after: 300 },
+          })
+        );
 
-    const blob = await Packer.toBlob(doc);
-    saveAs(blob, `${result.title}_회의록.docx`);
+        if (sec.type === "table" && Array.isArray(sec.content)) {
+          const table = new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 100, right: 100 },
+            rows: [
+              new TableRow({
+                children: ["실행과제", "담당자", "기한", "우선순위", "비고"].map(
+                  (text) => new TableCell({
+                    children: [new Paragraph({ 
+                      children: [new TextRun({ text, bold: true, size: 20 })],
+                      alignment: AlignmentType.CENTER
+                    })],
+                    shading: { fill: "F2F2F2" },
+                    verticalAlign: AlignmentType.CENTER,
+                  })
+                ),
+              }),
+              ...sec.content.map((row: any) => new TableRow({
+                children: [row.task, row.owner, row.due, row.prio, row.notes].map(
+                  (text) => new TableCell({ 
+                    children: [new Paragraph({ children: [new TextRun({ text: String(text || "-"), size: 18 })] })],
+                    verticalAlign: AlignmentType.CENTER,
+                  })
+                ),
+              })),
+            ],
+          });
+          children.push(table);
+        } else if (sec.type === "numbered" && Array.isArray(sec.content)) {
+          sec.content.forEach((item: any, i: number) => {
+            children.push(
+              new Paragraph({
+                children: [
+                  new TextRun({ text: `${String(i + 1).padStart(2, "0")}. ${item.title}`, bold: true, size: 24, color: "555555" }),
+                  new TextRun({ text: `\n${item.description}`, break: 1, size: 20, color: "666666" }),
+                ],
+                spacing: { before: 200, after: 150 },
+                indent: { left: 400 },
+              })
+            );
+          });
+        } else if (Array.isArray(sec.content)) {
+          sec.content.forEach((text: string) => {
+            children.push(new Paragraph({ text, bullet: { level: 0 }, spacing: { after: 100 } }));
+          });
+        } else {
+          children.push(new Paragraph({ text: String(sec.content), spacing: { after: 100 } }));
+        }
+      });
+
+      const doc = new Document({
+        sections: [{
+          headers: {
+            default: new Header({
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({ text: "Meeting Minutes", color: "888888", size: 16 })
+                  ],
+                  border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "CCCCCC", space: 1 } },
+                  spacing: { after: 200 }
+                })
+              ]
+            })
+          },
+          children
+        }]
+      });
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `${result.title}_회의록.docx`);
+    } catch (error) {
+      console.error("Word Export Error:", error);
+      alert("Word 생성 중 오류가 발생했습니다.");
+    } finally {
+      setIsWordGenerating(false);
+    }
   };
 
   const handleExportNotion = async () => {
     if (!result) return;
-    setIsExporting(true);
+    setIsNotionSaving(true);
     try {
       const savedSettings = localStorage.getItem("wooks_settings");
       const settings = savedSettings ? JSON.parse(savedSettings) : {};
@@ -114,7 +251,6 @@ export default function ResultPage() {
       });
       
       const data = await res.json();
-      
       if (res.ok) {
         alert("Notion에 성공적으로 전송되었습니다.");
       } else {
@@ -124,8 +260,17 @@ export default function ResultPage() {
       console.error("Notion Export Error:", error);
       alert(`노션 전송 실패: ${error.message}`);
     } finally {
-      setIsExporting(false);
+      setIsNotionSaving(false);
     }
+  };
+
+  const handleRedo = () => {
+    router.push("/");
+  };
+
+  const handleStartNew = () => {
+    localStorage.removeItem("wooks_temp_input");
+    router.push("/");
   };
 
   if (!result) return <div className={styles.container}>Loading...</div>;
@@ -133,20 +278,30 @@ export default function ResultPage() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <Link href="/" className={styles.backLink}>← 처음으로</Link>
-        <h1 className={styles.title}>분석 결과</h1>
-      </header>
-
-      <main className={styles.main}>
-        <div ref={printRef} style={{ width: "100%", padding: "20px", backgroundColor: "#f7f6f2" }}>
-          <SummaryBoard result={result} />
+        <div style={{ textAlign: "left" }}>
+          <h1 className={styles.title} style={{ margin: 0 }}>WOOK&apos;S 회의록</h1>
+          <p className={styles.subtitle} style={{ margin: 0, fontSize: "0.85rem", opacity: 0.7 }}>분석 결과 리포트</p>
         </div>
+
+        <div className={styles.navGroup}>
+          <button onClick={handleRedo} className={styles.navBtn}>↺ 재작성</button>
+          <button onClick={handleStartNew} className={styles.navBtn}>+ 새로 작성</button>
+        </div>
+        
         <ExportTools 
           onExportPDF={handleExportPDF}
           onExportWord={handleExportWord}
           onExportNotion={handleExportNotion}
-          isExporting={isExporting}
+          isPdfGenerating={isPdfGenerating}
+          isWordGenerating={isWordGenerating}
+          isNotionSaving={isNotionSaving}
         />
+      </header>
+
+      <main className={styles.main}>
+        <div ref={printRef} style={{ width: "100%", padding: "20px", backgroundColor: "#ffffff" }}>
+          <SummaryBoard result={result} />
+        </div>
       </main>
     </div>
   );

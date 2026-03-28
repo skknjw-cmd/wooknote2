@@ -5,32 +5,41 @@ interface Props {
   onExportPDF: () => void;
   onExportWord: () => void;
   onExportNotion: () => void;
-  isExporting?: boolean;
+  isPdfGenerating?: boolean;
+  isWordGenerating?: boolean;
+  isNotionSaving?: boolean;
 }
 
-export default function ExportTools({ onExportPDF, onExportWord, onExportNotion, isExporting }: Props) {
+export default function ExportTools({ 
+  onExportPDF, 
+  onExportWord, 
+  onExportNotion, 
+  isPdfGenerating, 
+  isWordGenerating, 
+  isNotionSaving 
+}: Props) {
   return (
     <div className={styles.container}>
       <button 
         className={`${styles.btn} ${styles.btnSecondary}`} 
-        onClick={onExportWord}
-        disabled={isExporting}
+        onClick={(e) => { e.stopPropagation(); onExportWord(); }}
+        disabled={isPdfGenerating || isWordGenerating || isNotionSaving}
       >
-        MS-Word 다운로드
+        {isWordGenerating ? "생성 중..." : "MS-Word 다운로드"}
       </button>
       <button 
         className={`${styles.btn} ${styles.btnSecondary}`} 
-        onClick={onExportPDF}
-        disabled={isExporting}
+        onClick={(e) => { e.stopPropagation(); onExportPDF(); }}
+        disabled={isPdfGenerating || isWordGenerating || isNotionSaving}
       >
-        PDF 저장
+        {isPdfGenerating ? "저장 중..." : "PDF 저장"}
       </button>
       <button 
         className={`${styles.btn} ${styles.btnNotion}`} 
-        onClick={onExportNotion}
-        disabled={isExporting}
+        onClick={(e) => { e.stopPropagation(); onExportNotion(); }}
+        disabled={isPdfGenerating || isWordGenerating || isNotionSaving}
       >
-        {isExporting ? "기록 중..." : "Notion 기록"}
+        {isNotionSaving ? "기록 중..." : "Notion 기록"}
       </button>
     </div>
   );
