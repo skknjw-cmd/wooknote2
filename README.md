@@ -1,28 +1,35 @@
-# WOOK'S 회의록 (Meeting Minutes Auto-Summary) 📝
+# WOOK'S 회의록 (Professional Meeting Minutes Solution) 📝
 
-**WOOK'S 회의록**은 인공지능(Gemini 2.5 Flash)과 클로바 음성 인식(STT) 기술을 결합하여, 회의 내용을 자동으로 기록하고 분석해주는 스마트 오피스 도구입니다. 
+**WOOK'S 회의록**은 최첨단 인공지능(Gemini 2.5 Flash)과 클로바 음성 인식(STT) 기술을 결합하여, 단순한 기록을 넘어 **비즈니스 인사이트**를 도출하는 토탈 회의 관리 솔루션입니다. 
 
-미니멀한 **무인양품(MUJI) 스타일**의 디자인과 강력한 분석 기능을 통해 회의록 작성 시간을 혁신적으로 단축해 드립니다.
-
----
-
-## ✨ 핵심 기능 (Core Features)
-
-- 🎙️ **멀티 모달 입력**: 실시간 음성 녹음, 오디오 파일 업로드, 직접 텍스트 입력을 모두 지원합니다.
-- ⚡ **실시간 STT 피드백**: 녹음 즉시 텍스트로 변환되어 내용을 바로 확인하고 수정할 수 있습니다.
-- 🧠 **9가지 지능형 분석**: 핵심요약, To-Do List, 주요 결정 사항 등 9가지 항목 중 원하는 것만 골라 맞춤형 회의록을 생성합니다.
-- 📤 **강력한 내보내기**:
-  - **Notion 연동**: 클릭 한 번으로 개인 노션 데이터베이스에 회의록 페이지 생성.
-  - **PDF 다운로드**: 디자인과 한글 레이아웃이 완벽 보존된 고해상도 PDF 추출.
-  - **MS Word**: 구조화된 문서 형식(`.docx`) 지원.
+실무자의 입장에서 설계된 정교한 레이아웃과 강력한 내보내기 기능을 통해 회의 운영의 패러다임을 바꿉니다.
 
 ---
 
-## ⚙️ 시작하기 (Getting Started)
+## 🔥 주요 고도화 기능 (Advanced Features)
 
-이 프로젝트는 보안을 위해 개별 사용자가 자신의 API 자격 증명을 직접 입력하여 사용하도록 설계되었습니다.
+### 🎙️ 1. 지능형 화자 인식 (Speaker Diarization)
+- **누가 말했는가?**: Clova Speech의 화자 분리 기술을 적용하여 실시간 녹음 및 파일 분석 시 `[화자 1]`, `[화자 2]`와 같이 발화자를 명확히 식별합니다.
+- **맥락 분석**: AI가 발화자별 의사결정 비중과 행동 계획을 더 정밀하게 분석합니다.
 
-### 1. 로컬에서 실행하기
+### 🧠 2. 고품질 AI 분석 및 일관성
+- **Deterministic Logic**: `Temperature 0.1` 설정을 통해 동일한 회의 내용에 대해 일관성 있고 신뢰할 수 있는 요약 결과를 보장합니다.
+- **비즈니스 개조식 문체**: 전문 컨설턴트 수준의 '~함', '~임' 어투를 사용하여 즉시 보고 가능한 퀄리티의 결과물을 생성합니다.
+
+### 📄 3. 섹션 최적화 PDF/Word 내보내기
+- **Intelligent Pagination**: 표의 행(Row)이나 리스트 항목 단위로 페이지를 나누어 공간 낭비를 최소화하고 가독성을 높였습니다.
+- **표 헤더 자동 반복**: 표가 다음 페이지로 넘어갈 때 제목행(`thead`)이 상단에 자동으로 복제됩니다.
+- **프로페셔널 레이아웃**: 웹 화면의 디자인을 100% 보존하면서도 인쇄 시에는 불필요한 브랜딩을 제거하여 공신력 있는 문서를 제공합니다.
+
+### ⚙️ 4. 프라이버시 중심의 자격 증명 시스템
+- **Privacy-First**: 모든 API 키(Gemini, Clova, Notion)는 서버가 아닌 사용자의 브라우저(`LocalStorage`)에만 안전하게 보관됩니다.
+- **Zero-Logging**: 회의 원문과 분석 데이터는 오직 사용자의 기기에서만 처리됩니다.
+
+---
+
+## 🚀 시작하기 (Getting Started)
+
+### 1. 로컬 개발 환경 구성
 ```bash
 # 의존성 설치
 npm install
@@ -32,28 +39,25 @@ npm run dev
 ```
 브라우저에서 `http://localhost:3000` 접속
 
-### 2. API 설정 (중요!)
-앱 우측 상단의 **톱니바퀴(⚙️) 버튼**을 눌러 아래 정보를 설정해 주세요.
-- **Google Gemini API**: 분석 엔진용
-- **Clova Speech**: 음성 인식용
-- **Notion**: 연동용 (Token 및 Database ID)
-
-*입력하신 정보는 서버에 저장되지 않으며, 오직 귀하의 브라우저(LocalStorage)에만 안전하게 보관됩니다.*
+### 2. API 자격 증명 설정 (필수)
+앱 우측 상단의 **톱니바퀴(⚙️) 버튼**을 눌러 다음 정보를 설정하세요:
+- **Google Gemini API Key**: AI 분석 엔진용 (v2.5 Flash 모델 사용)
+- **Clova Speech**: `Invoke URL` 및 `Secret Key` (음성 인식 및 화자 분리용)
+- **Notion Integration**: `Internal Integration Token` 및 `Database ID` (자동 기록용)
 
 ---
 
 ## 🛠 Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
-- **AI**: Google Gemini 2.5 Flash
-- **STT**: Naver Clova Speech
-- **Design**: Vanilla CSS (Warm beige/Minimalism)
-- **Library**: `@notionhq/client`, `html2canvas`, `jspdf`, `docx`
+- **Frontend**: Next.js 14 (App Router), TypeScript, Vanilla CSS
+- **AI/ML**: Google Gemini 2.5 Flash, Naver Clova Speech (Diarization)
+- **Document Engine**: `jspdf` & `html2canvas` (PDF), `docx` (MS Word)
+- **Integration**: Notion API via `@notionhq/client`
 
 ---
 
-## 🛡 Security & Privacy
-본 프로젝트는 개별 사용자의 API 키 노출을 방지하기 위해 로컬 환경 설정(`.env`)과 브라우저 기반 설정 시스템을 병행하여 사용합니다. 공유 시 개인의 `.env` 파일은 절대로 포함되지 않도록 주의해 주세요.
+## 🛡 Security & Ethics
+본 프로젝트는 데이터 주권(Data Sovereignty)을 준수하며, 사용자 개인의 API 키를 활용하여 완전한 독립형 서비스 운영을 목표로 합니다.
 
 ---
-Created with ❤️ by **Antigravity AI Agent**
+Created with ❤️ by **Antigravity AI Agent** & **WOOK** (v2.8 Final)
