@@ -1,6 +1,8 @@
 import React, { useRef, useState, useEffect } from "react";
 import styles from "./InputTabs.module.css";
 
+const SEGMENT_DURATION_MS = 5 * 60 * 1000; // 5분
+
 type InputData = {
   type: "text" | "file" | "record";
   content: string | File | Blob | null;
@@ -14,73 +16,111 @@ interface Props {
 export default function InputTabs({ value, onChange }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [segmentCount, setSegmentCount] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const isRecordingRef = useRef(false);
+  const segmentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const accumulatedTextRef = useRef("");
+  // onChange를 ref로 관리해 비동기 콜백에서 항상 최신 값 사용
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
 
   const handleTabClick = (type: "text" | "file" | "record") => {
-    if (isRecording) {
-      stopRecording();
-    }
+    if (isRecording) stopRecording();
     onChange({ type, content: type === "text" ? "" : null });
+  };
+
+  const getClovaHeaders = (): Record<string, string> => {
+    const savedSettings = localStorage.getItem("wooks_settings");
+    const settings = savedSettings ? JSON.parse(savedSettings) : {};
+    const headers: Record<string, string> = {};
+    if (settings.clovaInvokeUrl) headers["x-clova-url"] = settings.clovaInvokeUrl;
+    if (settings.clovaSecretKey) headers["x-clova-key"] = settings.clovaSecretKey;
+    return headers;
+  };
+
+  const processSegment = async (blob: Blob) => {
+    setIsTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append("media", blob);
+
+      const res = await fetch("/api/stt", {
+        method: "POST",
+        headers: getClovaHeaders(),
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "STT failed");
+      }
+
+      const data = await res.json();
+      if (data.text) {
+        accumulatedTextRef.current = accumulatedTextRef.current
+          ? `${accumulatedTextRef.current}\n${data.text}`
+          : data.text;
+        onChangeRef.current({ type: "record", content: accumulatedTextRef.current });
+      }
+    } catch (err) {
+      console.error("STT Segment Error:", err);
+      const errorNote = "[구간 변환 실패]";
+      accumulatedTextRef.current = accumulatedTextRef.current
+        ? `${accumulatedTextRef.current}\n${errorNote}`
+        : errorNote;
+      onChangeRef.current({ type: "record", content: accumulatedTextRef.current });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const startSegment = (stream: MediaStream) => {
+    const mediaRecorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = mediaRecorder;
+    chunksRef.current = [];
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      chunksRef.current = [];
+
+      // 아직 녹음 중이면 다음 세그먼트 바로 시작
+      if (isRecordingRef.current) {
+        setSegmentCount((prev) => prev + 1);
+        startSegment(stream);
+      }
+
+      await processSegment(blob);
+    };
+
+    mediaRecorder.start();
+
+    // SEGMENT_DURATION_MS 후 자동 교체
+    if (segmentTimerRef.current) clearTimeout(segmentTimerRef.current);
+    segmentTimerRef.current = setTimeout(() => {
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+    }, SEGMENT_DURATION_MS);
   };
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        setIsTranscribing(true);
-        
-        try {
-          // Prepare the audio data
-          const formData = new FormData();
-          formData.append("media", blob);
-          
-          // Read settings from localStorage for the API request
-          const savedSettings = localStorage.getItem("wooks_settings");
-          const settings = savedSettings ? JSON.parse(savedSettings) : {};
-          
-          const headers: Record<string, string> = {};
-          if (settings.clovaInvokeUrl) headers["x-clova-url"] = settings.clovaInvokeUrl;
-          if (settings.clovaSecretKey) headers["x-clova-key"] = settings.clovaSecretKey;
-
-          const res = await fetch("/api/stt", {
-            method: "POST",
-            headers: headers,
-            body: formData,
-          });
-          
-          if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.error || "STT failed");
-          }
-          const data = await res.json();
-          
-          // Store the text instead of Blob for confirmation
-          onChange({ type: "record", content: data.text });
-        } catch (err) {
-          console.error("STT Feedback Error:", err);
-          alert("음성을 텍스트로 변환하는 데 실패했습니다. 다시 시도해 주세요.");
-          onChange({ type: "record", content: null });
-        } finally {
-          setIsTranscribing(false);
-        }
-        
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
+      streamRef.current = stream;
+      accumulatedTextRef.current = "";
+      isRecordingRef.current = true;
+      setSegmentCount(1);
+      onChangeRef.current({ type: "record", content: null });
+      startSegment(stream);
       setIsRecording(true);
     } catch (err) {
       console.error("Recording error:", err);
@@ -89,19 +129,34 @@ export default function InputTabs({ value, onChange }: Props) {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
+    isRecordingRef.current = false;
+    if (segmentTimerRef.current) {
+      clearTimeout(segmentTimerRef.current);
+      segmentTimerRef.current = null;
     }
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setIsRecording(false);
   };
 
   const toggleRecording = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
+    if (isRecording) stopRecording();
+    else startRecording();
   };
+
+  let statusMsg = "버튼을 눌러 회의 녹음을 시작하세요";
+  if (isRecording && isTranscribing) {
+    statusMsg = `녹음 중... (구간 ${segmentCount} / 이전 구간 변환 중)`;
+  } else if (isRecording) {
+    statusMsg = `녹음 중... (구간 ${segmentCount} / 5분마다 자동 분할)`;
+  } else if (isTranscribing) {
+    statusMsg = "마지막 구간 텍스트 변환 중...";
+  } else if (value.content) {
+    statusMsg = "녹음 및 변환 완료! 아래에서 내용을 확인하세요.";
+  }
 
   return (
     <div>
@@ -165,20 +220,16 @@ export default function InputTabs({ value, onChange }: Props) {
         {value.type === "record" && (
           <div className={styles.recordArea}>
             <div className={styles.recordControls}>
-              <p style={{ color: "var(--text-secondary)" }}>
-                {isRecording ? "녹음 중입니다... (Clova Speech 연결 대기)" : 
-                 isTranscribing ? "텍스트로 변환 중입니다... 잠시만 기다려주세요." :
-                 (value.content ? "녹음 및 변환 완료! 아래에서 내용을 확인하세요." : "버튼을 눌러 회의 녹음을 시작하세요")}
-              </p>
+              <p style={{ color: "var(--text-secondary)" }}>{statusMsg}</p>
               <button
                 className={`${styles.recordBtn} ${isRecording ? styles.recording : ""}`}
                 onClick={toggleRecording}
-                disabled={isTranscribing}
+                disabled={!isRecording && isTranscribing}
               >
                 {isRecording ? "⏹" : isTranscribing ? "..." : "⏺"}
               </button>
             </div>
-            
+
             {(isTranscribing || (typeof value.content === "string" && value.content)) && (
               <div style={{ marginTop: "1.5rem", width: "100%" }}>
                 <label className={styles.label} style={{ marginBottom: "0.5rem", display: "block" }}>
