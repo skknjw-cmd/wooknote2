@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 60; // Vercel 함수 최대 실행 시간 (초)
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();

@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import styles from "./InputTabs.module.css";
 
-const SEGMENT_DURATION_MS = 5 * 60 * 1000; // 5분
+const SEGMENT_DURATION_MS = 2 * 60 * 1000; // 2분
 
 type InputData = {
   type: "text" | "file" | "record";
@@ -45,7 +45,12 @@ export default function InputTabs({ value, onChange }: Props) {
 
   const processSegment = async (blob: Blob) => {
     setIsTranscribing(true);
+    console.log(`[STT] 세그먼트 처리 시작 - 크기: ${(blob.size / 1024).toFixed(1)}KB, 타입: ${blob.type}`);
     try {
+      if (blob.size < 1024) {
+        throw new Error(`오디오 데이터가 너무 작습니다 (${blob.size} bytes)`);
+      }
+
       const formData = new FormData();
       formData.append("media", blob);
 
@@ -57,7 +62,7 @@ export default function InputTabs({ value, onChange }: Props) {
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || "STT failed");
+        throw new Error(errorData.details || errorData.error || `HTTP ${res.status}`);
       }
 
       const data = await res.json();
@@ -67,9 +72,9 @@ export default function InputTabs({ value, onChange }: Props) {
           : data.text;
         onChangeRef.current({ type: "record", content: accumulatedTextRef.current });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("STT Segment Error:", err);
-      const errorNote = "[구간 변환 실패]";
+      const errorNote = `[구간 변환 실패: ${err.message}]`;
       accumulatedTextRef.current = accumulatedTextRef.current
         ? `${accumulatedTextRef.current}\n${errorNote}`
         : errorNote;
@@ -151,7 +156,7 @@ export default function InputTabs({ value, onChange }: Props) {
   if (isRecording && isTranscribing) {
     statusMsg = `녹음 중... (구간 ${segmentCount} / 이전 구간 변환 중)`;
   } else if (isRecording) {
-    statusMsg = `녹음 중... (구간 ${segmentCount} / 5분마다 자동 분할)`;
+    statusMsg = `녹음 중... (구간 ${segmentCount} / 2분마다 자동 분할)`;
   } else if (isTranscribing) {
     statusMsg = "마지막 구간 텍스트 변환 중...";
   } else if (value.content) {
