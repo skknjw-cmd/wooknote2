@@ -84,8 +84,22 @@ export default function InputTabs({ value, onChange }: Props) {
     }
   };
 
+  const getSupportedMimeType = (): string => {
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+    ];
+    return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  };
+
   const startSegment = (stream: MediaStream) => {
-    const mediaRecorder = new MediaRecorder(stream);
+    const mimeType = getSupportedMimeType();
+    const mediaRecorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
     mediaRecorderRef.current = mediaRecorder;
     chunksRef.current = [];
 
@@ -94,7 +108,8 @@ export default function InputTabs({ value, onChange }: Props) {
     };
 
     mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const actualType = mediaRecorder.mimeType || mimeType || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type: actualType });
       chunksRef.current = [];
 
       // 아직 녹음 중이면 다음 세그먼트 바로 시작
