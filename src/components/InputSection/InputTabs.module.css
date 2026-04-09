@@ -75,6 +75,12 @@
   text-align: center;
 }
 
+.recordBtns {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
 .recordBtn {
   background-color: var(--text-accent);
   color: #fff;
@@ -96,8 +102,18 @@
   animation: pulse 1.5s infinite;
 }
 
+.recordBtn.paused {
+  animation: pausePulse 2s infinite;
+  background-color: var(--accent-base);
+}
+
 @keyframes pulse {
   0% { box-shadow: 0 0 0 0 rgba(176, 92, 80, 0.4); }
   70% { box-shadow: 0 0 0 20px rgba(176, 92, 80, 0); }
   100% { box-shadow: 0 0 0 0 rgba(176, 92, 80, 0); }
+}
+
+@keyframes pausePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }

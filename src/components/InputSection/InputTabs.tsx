@@ -15,6 +15,7 @@ interface Props {
 
 export default function InputTabs({ value, onChange }: Props) {
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [segmentCount, setSegmentCount] = useState(0);
 
@@ -24,6 +25,8 @@ export default function InputTabs({ value, onChange }: Props) {
   const streamRef = useRef<MediaStream | null>(null);
   const isRecordingRef = useRef(false);
   const segmentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const segmentStartTimeRef = useRef<number>(0);
+  const segmentRemainingRef = useRef<number>(SEGMENT_DURATION_MS);
   const accumulatedTextRef = useRef("");
   // onChange를 ref로 관리해 비동기 콜백에서 항상 최신 값 사용
   const onChangeRef = useRef(onChange);
@@ -124,6 +127,8 @@ export default function InputTabs({ value, onChange }: Props) {
     mediaRecorder.start();
 
     // SEGMENT_DURATION_MS 후 자동 교체
+    segmentRemainingRef.current = SEGMENT_DURATION_MS;
+    segmentStartTimeRef.current = Date.now();
     if (segmentTimerRef.current) clearTimeout(segmentTimerRef.current);
     segmentTimerRef.current = setTimeout(() => {
       if (mediaRecorderRef.current?.state === "recording") {
@@ -148,14 +153,45 @@ export default function InputTabs({ value, onChange }: Props) {
     }
   };
 
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.pause();
+      // 세그먼트 타이머 일시정지: 남은 시간 계산 후 타이머 해제
+      if (segmentTimerRef.current) {
+        clearTimeout(segmentTimerRef.current);
+        segmentTimerRef.current = null;
+      }
+      const elapsed = Date.now() - segmentStartTimeRef.current;
+      segmentRemainingRef.current = Math.max(0, segmentRemainingRef.current - elapsed);
+      setIsPaused(true);
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current?.state === "paused") {
+      mediaRecorderRef.current.resume();
+      // 세그먼트 타이머 재개: 남은 시간으로 다시 설정
+      segmentStartTimeRef.current = Date.now();
+      segmentTimerRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          mediaRecorderRef.current.stop();
+        }
+      }, segmentRemainingRef.current);
+      setIsPaused(false);
+    }
+  };
+
   const stopRecording = () => {
     isRecordingRef.current = false;
+    setIsPaused(false);
     if (segmentTimerRef.current) {
       clearTimeout(segmentTimerRef.current);
       segmentTimerRef.current = null;
     }
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
+    const state = mediaRecorderRef.current?.state;
+    if (state === "recording" || state === "paused") {
+      if (state === "paused") mediaRecorderRef.current!.resume();
+      mediaRecorderRef.current!.stop();
     }
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -168,7 +204,11 @@ export default function InputTabs({ value, onChange }: Props) {
   };
 
   let statusMsg = "버튼을 눌러 회의 녹음을 시작하세요";
-  if (isRecording && isTranscribing) {
+  if (isPaused && isTranscribing) {
+    statusMsg = `일시정지 중 (구간 ${segmentCount} / 이전 구간 변환 중)`;
+  } else if (isPaused) {
+    statusMsg = `일시정지 중 (구간 ${segmentCount}) — 재개 버튼을 눌러 계속하세요`;
+  } else if (isRecording && isTranscribing) {
     statusMsg = `녹음 중... (구간 ${segmentCount} / 이전 구간 변환 중)`;
   } else if (isRecording) {
     statusMsg = `녹음 중... (구간 ${segmentCount} / 2분마다 자동 분할)`;
@@ -241,13 +281,25 @@ export default function InputTabs({ value, onChange }: Props) {
           <div className={styles.recordArea}>
             <div className={styles.recordControls}>
               <p style={{ color: "var(--text-secondary)" }}>{statusMsg}</p>
-              <button
-                className={`${styles.recordBtn} ${isRecording ? styles.recording : ""}`}
-                onClick={toggleRecording}
-                disabled={!isRecording && isTranscribing}
-              >
-                {isRecording ? "⏹" : isTranscribing ? "..." : "⏺"}
-              </button>
+              <div className={styles.recordBtns}>
+                {isRecording && (
+                  <button
+                    className={`${styles.recordBtn} ${isPaused ? styles.paused : ""}`}
+                    onClick={isPaused ? resumeRecording : pauseRecording}
+                    title={isPaused ? "재개" : "일시정지"}
+                  >
+                    {isPaused ? "▶" : "⏸"}
+                  </button>
+                )}
+                <button
+                  className={`${styles.recordBtn} ${isRecording && !isPaused ? styles.recording : ""}`}
+                  onClick={toggleRecording}
+                  disabled={!isRecording && isTranscribing}
+                  title={isRecording ? "정지" : "녹음 시작"}
+                >
+                  {isRecording ? "⏹" : isTranscribing ? "..." : "⏺"}
+                </button>
+              </div>
             </div>
 
             {(isTranscribing || (typeof value.content === "string" && value.content)) && (
