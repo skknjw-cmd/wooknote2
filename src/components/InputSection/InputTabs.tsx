@@ -1,12 +1,9 @@
 import React, { useRef, useState, useEffect } from "react";
 import styles from "./InputTabs.module.css";
+import type { Segment, InputData } from "@/types/meeting";
+import { resolveSegments } from "@/lib/speakerMapping";
 
-const SEGMENT_DURATION_MS = 2 * 60 * 1000; // 2분
-
-type InputData = {
-  type: "text" | "file" | "record";
-  content: string | File | Blob | null;
-};
+const SEGMENT_DURATION_MS = 2 * 60 * 1000;
 
 interface Props {
   value: InputData;
@@ -27,27 +24,37 @@ export default function InputTabs({ value, onChange }: Props) {
   const segmentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const segmentStartTimeRef = useRef<number>(0);
   const segmentRemainingRef = useRef<number>(SEGMENT_DURATION_MS);
-  const accumulatedTextRef = useRef("");
   const transcribingCountRef = useRef(0);
   const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // onChange를 ref로 관리해 비동기 콜백에서 항상 최신 값 사용
+
+  const segmentsMapRef = useRef<Map<number, Segment[]>>(new Map());
+  const sequenceCounterRef = useRef(0);
+  const idCounterRef = useRef(0);
+  const cumulativeOffsetMsRef = useRef(0);
+  const activeSequenceIdRef = useRef(0);
+
   const onChangeRef = useRef(onChange);
-  useEffect(() => { onChangeRef.current = onChange; });
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
 
   const cleanupStream = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
   };
 
-  // 컴포넌트 언마운트 시 정리
   useEffect(() => {
     return () => {
       isRecordingRef.current = false;
       if (segmentTimerRef.current) clearTimeout(segmentTimerRef.current);
       if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
-      try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+      try {
+        mediaRecorderRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
@@ -61,30 +68,50 @@ export default function InputTabs({ value, onChange }: Props) {
   };
 
   const getClovaHeaders = (): Record<string, string> => {
-    const savedSettings = localStorage.getItem("wooks_settings");
-    const settings = savedSettings ? JSON.parse(savedSettings) : {};
+    const saved = localStorage.getItem("wooks_settings");
+    const settings = saved ? JSON.parse(saved) : {};
     const headers: Record<string, string> = {};
     if (settings.clovaInvokeUrl) headers["x-clova-url"] = settings.clovaInvokeUrl;
     if (settings.clovaSecretKey) headers["x-clova-key"] = settings.clovaSecretKey;
     return headers;
   };
 
-  const processSegment = async (blob: Blob) => {
+  const nextSegmentId = (): string => {
+    idCounterRef.current += 1;
+    return `seg_${String(idCounterRef.current).padStart(6, "0")}`;
+  };
+
+  const emitAllSegments = () => {
+    const allSegments = Array.from(segmentsMapRef.current.entries())
+      .sort(([a], [b]) => a - b)
+      .flatMap(([, segs]) => segs);
+    const content = resolveSegments(allSegments, {});
+    onChangeRef.current({
+      type: "record",
+      content,
+      segments: allSegments,
+    });
+  };
+
+  const processSegment = async (
+    blob: Blob,
+    sequenceId: number,
+    elapsedMs: number
+  ) => {
     transcribingCountRef.current += 1;
     setIsTranscribing(true);
-    console.log(`[STT] 세그먼트 처리 시작 - 크기: ${(blob.size / 1024).toFixed(1)}KB, 타입: ${blob.type}, 활성: ${transcribingCountRef.current}`);
+    const offsetBase = cumulativeOffsetMsRef.current;
+    cumulativeOffsetMsRef.current += elapsedMs;
+
     try {
       if (blob.size < 1024) {
         throw new Error(`오디오 데이터가 너무 작습니다 (${blob.size} bytes)`);
       }
-
       const formData = new FormData();
       formData.append("media", blob);
 
-      // 50초 타임아웃 (Vercel Hobby 60초 제한 대비)
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 50000);
-
       const res = await fetch("/api/stt", {
         method: "POST",
         headers: getClovaHeaders(),
@@ -98,33 +125,53 @@ export default function InputTabs({ value, onChange }: Props) {
         try {
           const errorData = await res.json();
           errMsg = errorData.details || errorData.error || errMsg;
-        } catch { /* non-JSON response */ }
+        } catch {
+          /* non-JSON */
+        }
         throw new Error(errMsg);
       }
 
       const data = await res.json();
-      console.log("[STT] 변환 성공:", data.text?.slice(0, 50));
-      if (data.text) {
-        accumulatedTextRef.current = accumulatedTextRef.current
-          ? `${accumulatedTextRef.current}\n${data.text}`
-          : data.text;
-        onChangeRef.current({ type: "record", content: accumulatedTextRef.current });
-      }
-    } catch (err: any) {
+      const incoming: Array<{
+        clovaLabel: string;
+        text: string;
+        start?: number;
+        end?: number;
+      }> = Array.isArray(data.segments) ? data.segments : [];
+
+      const newSegments: Segment[] = incoming.map((s) => ({
+        id: nextSegmentId(),
+        sequenceId,
+        originalSpeaker: `${sequenceId}:${s.clovaLabel}`,
+        text: s.text,
+        start:
+          typeof s.start === "number" ? offsetBase + s.start : undefined,
+        end: typeof s.end === "number" ? offsetBase + s.end : undefined,
+      }));
+
+      segmentsMapRef.current.set(sequenceId, newSegments);
+      emitAllSegments();
+    } catch (err) {
       console.error("STT Segment Error:", err);
-      const msg = err.name === "AbortError" ? "요청 시간 초과 (50초)" : err.message;
-      const errorNote = `[구간 변환 실패: ${msg}]`;
-      accumulatedTextRef.current = accumulatedTextRef.current
-        ? `${accumulatedTextRef.current}\n${errorNote}`
-        : errorNote;
-      onChangeRef.current({ type: "record", content: accumulatedTextRef.current });
+      const name = err instanceof Error && err.name === "AbortError"
+        ? "요청 시간 초과 (50초)"
+        : err instanceof Error
+        ? err.message
+        : "unknown";
+      const errorSegment: Segment = {
+        id: nextSegmentId(),
+        sequenceId,
+        originalSpeaker: `${sequenceId}:?`,
+        text: `[구간 변환 실패: ${name}]`,
+      };
+      segmentsMapRef.current.set(sequenceId, [errorSegment]);
+      emitAllSegments();
     } finally {
       transcribingCountRef.current -= 1;
       if (transcribingCountRef.current <= 0) {
         transcribingCountRef.current = 0;
         setIsTranscribing(false);
       }
-      console.log(`[STT] 세그먼트 처리 완료, 남은 활성: ${transcribingCountRef.current}`);
     }
   };
 
@@ -147,49 +194,48 @@ export default function InputTabs({ value, onChange }: Props) {
     mediaRecorderRef.current = mediaRecorder;
     chunksRef.current = [];
 
+    sequenceCounterRef.current += 1;
+    const thisSeq = sequenceCounterRef.current;
+    activeSequenceIdRef.current = thisSeq;
+    const chunkStart = Date.now();
+
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunksRef.current.push(e.data);
     };
 
     mediaRecorder.onstop = async () => {
-      // watchdog 해제
       if (watchdogTimerRef.current) {
         clearTimeout(watchdogTimerRef.current);
         watchdogTimerRef.current = null;
       }
-
       const actualType = mediaRecorder.mimeType || mimeType || "audio/webm";
       const blob = new Blob(chunksRef.current, { type: actualType });
-      const chunkCount = chunksRef.current.length;
       chunksRef.current = [];
-      console.log(`[REC] onstop - chunks: ${chunkCount}, blob: ${(blob.size / 1024).toFixed(1)}KB, isRecording: ${isRecordingRef.current}`);
+      const elapsed = Date.now() - chunkStart;
 
       if (isRecordingRef.current) {
-        // 아직 녹음 중 → 다음 세그먼트 시작
         setSegmentCount((prev) => prev + 1);
         startSegment(stream);
       } else {
-        // 녹음 종료 → stream 정리 및 UI 상태 업데이트
         cleanupStream();
         setIsRecording(false);
       }
 
-      // blob이 유효한 경우에만 STT 처리
       if (blob.size >= 1024) {
-        await processSegment(blob);
-      } else {
-        console.warn(`[REC] 세그먼트 건너뜀: ${blob.size} bytes (너무 작음)`);
+        await processSegment(blob, thisSeq, elapsed);
       }
     };
 
     mediaRecorder.onerror = (event) => {
       console.error("[REC] MediaRecorder error:", event);
-      // 에러 발생 시 수집된 chunks로 최대한 복구
       if (chunksRef.current.length > 0) {
         const actualType = mediaRecorder.mimeType || mimeType || "audio/webm";
         const blob = new Blob(chunksRef.current, { type: actualType });
         chunksRef.current = [];
-        if (blob.size >= 1024) processSegment(blob);
+        if (blob.size >= 1024) {
+          const elapsed = Date.now() - chunkStart;
+          processSegment(blob, thisSeq, elapsed);
+        }
       }
       if (!isRecordingRef.current) {
         cleanupStream();
@@ -199,7 +245,6 @@ export default function InputTabs({ value, onChange }: Props) {
 
     mediaRecorder.start();
 
-    // SEGMENT_DURATION_MS 후 자동 교체
     segmentRemainingRef.current = SEGMENT_DURATION_MS;
     segmentStartTimeRef.current = Date.now();
     if (segmentTimerRef.current) clearTimeout(segmentTimerRef.current);
@@ -214,10 +259,13 @@ export default function InputTabs({ value, onChange }: Props) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      accumulatedTextRef.current = "";
+      segmentsMapRef.current = new Map();
+      sequenceCounterRef.current = 0;
+      idCounterRef.current = 0;
+      cumulativeOffsetMsRef.current = 0;
       isRecordingRef.current = true;
       setSegmentCount(1);
-      onChangeRef.current({ type: "record", content: null });
+      onChangeRef.current({ type: "record", content: null, segments: [] });
       startSegment(stream);
       setIsRecording(true);
     } catch (err) {
@@ -229,13 +277,15 @@ export default function InputTabs({ value, onChange }: Props) {
   const pauseRecording = () => {
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.pause();
-      // 세그먼트 타이머 일시정지: 남은 시간 계산 후 타이머 해제
       if (segmentTimerRef.current) {
         clearTimeout(segmentTimerRef.current);
         segmentTimerRef.current = null;
       }
       const elapsed = Date.now() - segmentStartTimeRef.current;
-      segmentRemainingRef.current = Math.max(0, segmentRemainingRef.current - elapsed);
+      segmentRemainingRef.current = Math.max(
+        0,
+        segmentRemainingRef.current - elapsed
+      );
       setIsPaused(true);
     }
   };
@@ -243,7 +293,6 @@ export default function InputTabs({ value, onChange }: Props) {
   const resumeRecording = () => {
     if (mediaRecorderRef.current?.state === "paused") {
       mediaRecorderRef.current.resume();
-      // 세그먼트 타이머 재개: 남은 시간으로 다시 설정
       segmentStartTimeRef.current = Date.now();
       segmentTimerRef.current = setTimeout(() => {
         if (mediaRecorderRef.current?.state === "recording") {
@@ -261,25 +310,24 @@ export default function InputTabs({ value, onChange }: Props) {
       clearTimeout(segmentTimerRef.current);
       segmentTimerRef.current = null;
     }
-
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") {
       cleanupStream();
       setIsRecording(false);
       return;
     }
-
-    // requestData()로 버퍼 데이터 flush 후 stop() 직접 호출
-    // W3C spec: stop()은 "recording"과 "paused" 양쪽에서 호출 가능
-    try { recorder.requestData(); } catch { /* ignore */ }
-    try { recorder.stop(); } catch {
-      // stop() 실패 시 직접 정리
+    try {
+      recorder.requestData();
+    } catch {
+      /* ignore */
+    }
+    try {
+      recorder.stop();
+    } catch {
       cleanupStream();
       setIsRecording(false);
       return;
     }
-
-    // onstop이 발생하지 않는 극단적 상황 대비 5초 watchdog
     if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
     watchdogTimerRef.current = setTimeout(() => {
       console.warn("[REC] Watchdog: onstop이 5초 내 미발생. 강제 정리.");
@@ -287,8 +335,6 @@ export default function InputTabs({ value, onChange }: Props) {
       setIsRecording(false);
       mediaRecorderRef.current = null;
     }, 5000);
-
-    // 주의: setIsRecording(false)와 stream 정리는 onstop 핸들러에서 처리
   };
 
   const toggleRecording = () => {
@@ -307,8 +353,8 @@ export default function InputTabs({ value, onChange }: Props) {
     statusMsg = `녹음 중... (구간 ${segmentCount} / 2분마다 자동 분할)`;
   } else if (isTranscribing) {
     statusMsg = "마지막 구간 텍스트 변환 중...";
-  } else if (value.content) {
-    statusMsg = "녹음 및 변환 완료! 아래에서 내용을 확인하세요.";
+  } else if (typeof value.content === "string" && value.content) {
+    statusMsg = "녹음 및 변환 완료! 아래에서 화자 이름을 지정해보세요.";
   }
 
   return (
@@ -340,7 +386,9 @@ export default function InputTabs({ value, onChange }: Props) {
             className={styles.textarea}
             placeholder="회의 내용을 여기에 입력하세요..."
             value={typeof value.content === "string" ? value.content : ""}
-            onChange={(e) => onChange({ type: "text", content: e.target.value })}
+            onChange={(e) =>
+              onChange({ type: "text", content: e.target.value })
+            }
           />
         )}
 
@@ -365,7 +413,9 @@ export default function InputTabs({ value, onChange }: Props) {
               파일 선택하기
             </button>
             {value.content instanceof File && (
-              <p style={{ marginTop: "1rem" }}>선택된 파일: {value.content.name}</p>
+              <p style={{ marginTop: "1rem" }}>
+                선택된 파일: {value.content.name}
+              </p>
             )}
           </div>
         )}
@@ -395,16 +445,31 @@ export default function InputTabs({ value, onChange }: Props) {
               </div>
             </div>
 
-            {(isTranscribing || (typeof value.content === "string" && value.content)) && (
+            {(isTranscribing ||
+              (typeof value.content === "string" && value.content)) && (
               <div style={{ marginTop: "1.5rem", width: "100%" }}>
-                <label className={styles.label} style={{ marginBottom: "0.5rem", display: "block" }}>
+                <label
+                  className={styles.label}
+                  style={{ marginBottom: "0.5rem", display: "block" }}
+                >
                   변환된 내용 (확인 및 수정)
                 </label>
                 <textarea
                   className={styles.textarea}
-                  placeholder={isTranscribing ? "텍스트 변환 중..." : "변환된 내용이 여기에 표시됩니다."}
+                  placeholder={
+                    isTranscribing
+                      ? "텍스트 변환 중..."
+                      : "변환된 내용이 여기에 표시됩니다."
+                  }
                   value={typeof value.content === "string" ? value.content : ""}
-                  onChange={(e) => onChange({ type: "record", content: e.target.value })}
+                  onChange={(e) =>
+                    onChange({
+                      type: "record",
+                      content: e.target.value,
+                      segments: value.segments,
+                      mapping: value.mapping,
+                    })
+                  }
                   style={{ minHeight: "150px" }}
                   readOnly={isTranscribing}
                 />
