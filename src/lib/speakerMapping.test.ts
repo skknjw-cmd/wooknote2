@@ -133,3 +133,144 @@ describe("resolveSegments", () => {
     expect(resolveSegments(segs, map)).toBe("홍길동: \n둘째");
   });
 });
+
+import { applyMappingToAnalysis } from "./speakerMapping";
+import type { AnalysisResult } from "@/types/meeting";
+
+const makeAnalysis = (): AnalysisResult => ({
+  title: "주간회의",
+  date: "2026-04-13",
+  attendees: ["홍길동", "김영희"],
+  sections: [
+    {
+      name: "핵심요약",
+      type: "numbered",
+      content: [
+        { title: "결정", description: "홍길동이 결정함. 김영희는 반대함." },
+      ],
+    },
+    {
+      name: "To-Do",
+      type: "table",
+      content: [
+        {
+          task: "계약서",
+          owner: "홍길동",
+          due: "04/20",
+          prio: "상",
+          notes: "홍길동이 검토",
+        },
+      ],
+    },
+  ],
+});
+
+describe("applyMappingToAnalysis", () => {
+  it("replaces a renamed speaker across all string fields and attendees", () => {
+    const analysis = makeAnalysis();
+    const old = { "1:1": "홍길동", "1:2": "김영희" };
+    const next = { "1:1": "박철수", "1:2": "김영희" };
+
+    const { analysis: out, unresolvedCount, unresolvedNames } =
+      applyMappingToAnalysis(analysis, old, next);
+
+    expect(unresolvedCount).toBe(0);
+    expect(unresolvedNames).toEqual([]);
+    expect(out.attendees).toContain("박철수");
+    expect(out.attendees).not.toContain("홍길동");
+    expect(out.attendees).toContain("김영희");
+
+    const numbered = out.sections[0];
+    if (numbered.type !== "numbered") throw new Error("wrong type");
+    expect(numbered.content[0].description).toBe(
+      "박철수이 결정함. 김영희는 반대함."
+    );
+
+    const table = out.sections[1];
+    if (table.type !== "table") throw new Error("wrong type");
+    expect(table.content[0].owner).toBe("박철수");
+    expect(table.content[0].notes).toBe("박철수이 검토");
+  });
+
+  it("respects 조사 boundary: 홍길동이 -> 박철수가 (particle preserved)", () => {
+    const analysis: AnalysisResult = {
+      title: "t",
+      date: "d",
+      attendees: ["홍길동"],
+      sections: [
+        {
+          name: "n",
+          type: "numbered",
+          content: [{ title: "t", description: "홍길동이 말했다" }],
+        },
+      ],
+    };
+    const { analysis: out } = applyMappingToAnalysis(
+      analysis,
+      { "1:1": "홍길동" },
+      { "1:1": "박철수" }
+    );
+    const sec = out.sections[0];
+    if (sec.type !== "numbered") throw new Error("wrong");
+    expect(sec.content[0].description).toBe("박철수이 말했다");
+  });
+
+  it("does not corrupt substrings (홍길 vs 홍길동, longest-first)", () => {
+    const analysis: AnalysisResult = {
+      title: "t",
+      date: "d",
+      attendees: ["홍길", "홍길동"],
+      sections: [
+        {
+          name: "n",
+          type: "numbered",
+          content: [{ title: "t", description: "홍길동이 왔다. 홍길도 왔다." }],
+        },
+      ],
+    };
+    const { analysis: out } = applyMappingToAnalysis(
+      analysis,
+      { "1:1": "홍길동", "1:2": "홍길" },
+      { "1:1": "박철수", "1:2": "이영수" }
+    );
+    const sec = out.sections[0];
+    if (sec.type !== "numbered") throw new Error("wrong");
+    expect(sec.content[0].description).toBe("박철수이 왔다. 이영수도 왔다.");
+  });
+
+  it("blocks replacement for stopword-colliding names and reports unresolved", () => {
+    const analysis: AnalysisResult = {
+      title: "t",
+      date: "d",
+      attendees: ["김"],
+      sections: [
+        {
+          name: "n",
+          type: "numbered",
+          content: [{ title: "t", description: "김치 얘기를 했다" }],
+        },
+      ],
+    };
+    const { analysis: out, unresolvedNames } = applyMappingToAnalysis(
+      analysis,
+      { "1:1": "김" },
+      { "1:1": "박철수" }
+    );
+    const sec = out.sections[0];
+    if (sec.type !== "numbered") throw new Error("wrong");
+    expect(sec.content[0].description).toBe("김치 얘기를 했다");
+    expect(unresolvedNames).toContain("김");
+  });
+
+  it("no-op when oldMapping and newMapping are identical", () => {
+    const analysis = makeAnalysis();
+    const map = { "1:1": "홍길동", "1:2": "김영희" };
+    const { analysis: out, unresolvedCount } = applyMappingToAnalysis(
+      analysis,
+      map,
+      map
+    );
+    expect(out).toEqual(analysis);
+    expect(unresolvedCount).toBe(0);
+  });
+});

@@ -1,5 +1,31 @@
 // src/lib/speakerMapping.ts
-import type { Segment, SpeakerMapping } from "@/types/meeting";
+import type { AnalysisResult, Segment, SpeakerMapping } from "@/types/meeting";
+
+// Common Korean nouns that would be corrupted by short-name replacement.
+// If any old name matches one of these, we skip replacement and report it.
+const NAME_COLLISION_STOPWORDS = new Set<string>([
+  "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임",
+  "김치", "김밥", "김포", "이사", "이사회", "이사진", "박사", "박수",
+  "최고", "최근", "정리", "정치", "정부", "강조", "조정", "조금",
+  "장소", "장기", "임시",
+]);
+
+// Particles that commonly attach to a name in Korean prose.
+const PARTICLES = "은는이가을를과와의에서도로께으";
+
+// Escapes a string for use inside a RegExp literal.
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildNameRegex(name: string): RegExp {
+  const escaped = escapeRegex(name);
+  const pattern =
+    `(?<=^|[\\s.,!?:;「『"'(\\[])` +
+    escaped +
+    `(?=$|[\\s.,!?:;「』"')\\]]|[${PARTICLES}])`;
+  return new RegExp(pattern, "g");
+}
 
 export type SpeakerStat = {
   originalSpeaker: string;
@@ -76,4 +102,98 @@ export function resolveSegments(
   return blocks
     .map((b) => `${b.speaker}: ${b.lines.join("\n")}`)
     .join("\n\n");
+}
+
+export type ApplyMappingResult = {
+  analysis: AnalysisResult;
+  unresolvedCount: number;
+  unresolvedNames: string[];
+};
+
+export function applyMappingToAnalysis(
+  analysis: AnalysisResult,
+  oldMapping: SpeakerMapping,
+  newMapping: SpeakerMapping
+): ApplyMappingResult {
+  const renames: Array<{ oldName: string; newName: string }> = [];
+  const seenOldNames = new Set<string>();
+  for (const key of new Set([
+    ...Object.keys(oldMapping),
+    ...Object.keys(newMapping),
+  ])) {
+    const oldName = (oldMapping[key] || "").trim();
+    const newName = (newMapping[key] || "").trim();
+    if (!oldName || !newName) continue;
+    if (oldName === newName) continue;
+    if (seenOldNames.has(oldName)) continue;
+    seenOldNames.add(oldName);
+    renames.push({ oldName, newName });
+  }
+
+  renames.sort((a, b) => b.oldName.length - a.oldName.length);
+
+  const unresolvedNames: string[] = [];
+  const safeRenames: Array<{ oldName: string; newName: string; re: RegExp }> = [];
+  for (const r of renames) {
+    if (NAME_COLLISION_STOPWORDS.has(r.oldName)) {
+      unresolvedNames.push(r.oldName);
+      continue;
+    }
+    safeRenames.push({ ...r, re: buildNameRegex(r.oldName) });
+  }
+
+  const replaceInString = (value: string): string => {
+    let out = value;
+    for (const r of safeRenames) {
+      out = out.replace(r.re, r.newName);
+    }
+    return out;
+  };
+
+  const nextSections = analysis.sections.map((section) => {
+    if (section.type === "numbered") {
+      return {
+        ...section,
+        content: section.content.map((item) => ({
+          title: replaceInString(item.title),
+          description: replaceInString(item.description),
+        })),
+      };
+    }
+    return {
+      ...section,
+      content: section.content.map((item) => ({
+        task: replaceInString(item.task),
+        owner: replaceInString(item.owner),
+        due: replaceInString(item.due),
+        prio: replaceInString(item.prio),
+        notes: replaceInString(item.notes),
+      })),
+    };
+  });
+
+  const removeOldNames = new Set(safeRenames.map((r) => r.oldName));
+  const cleanedOld = analysis.attendees.filter((a) => !removeOldNames.has(a));
+  const mergedAttendees: string[] = [];
+  const seen = new Set<string>();
+  const pushUnique = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    mergedAttendees.push(trimmed);
+  };
+  for (const name of cleanedOld) pushUnique(name);
+  for (const value of Object.values(newMapping)) {
+    if (value) pushUnique(value);
+  }
+
+  return {
+    analysis: {
+      ...analysis,
+      attendees: mergedAttendees,
+      sections: nextSections,
+    },
+    unresolvedCount: unresolvedNames.length,
+    unresolvedNames,
+  };
 }
