@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import styles from "./SettingsModal.module.css";
+import { clearMeetingResult } from "@/lib/meetingStorage";
 
 interface Props {
   isOpen: boolean;
@@ -110,7 +111,23 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
         </div>
 
         <footer className={styles.footer}>
-          <button className={styles.saveBtn} onClick={handleSave}>저장하기</button>
+          <button
+            className={styles.saveBtn}
+            style={{ background: "#ef4444", marginRight: "0.5rem" }}
+            onClick={() => {
+              const ok = window.confirm(
+                "저장된 회의록과 화자 이름 지정 내역이 삭제됩니다. 되돌릴 수 없습니다. 진행할까요?"
+              );
+              if (!ok) return;
+              clearMeetingResult();
+              alert("저장된 회의록을 삭제했습니다.");
+            }}
+          >
+            저장된 회의록 삭제
+          </button>
+          <button className={styles.saveBtn} onClick={handleSave}>
+            저장하기
+          </button>
         </footer>
       </div>
     </div>
