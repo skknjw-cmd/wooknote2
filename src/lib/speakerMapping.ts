@@ -10,20 +10,27 @@ const NAME_COLLISION_STOPWORDS = new Set<string>([
   "장소", "장기", "임시",
 ]);
 
-// Particles that commonly attach to a name in Korean prose.
-const PARTICLES = "은는이가을를과와의에서도로께으";
-
 // Escapes a string for use inside a RegExp literal.
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Builds a regex that matches `name` only when it appears as a standalone
+// token. Left boundary: start-of-string, whitespace, or common punctuation.
+// Right boundary: end-of-string, whitespace/punctuation, or any Hangul
+// syllable (which is almost always a particle attaching to the name in
+// Korean prose, e.g. "홍길동이", "홍길동한테", "홍길동께서").
+//
+// The Hangul-syllable right boundary intentionally over-matches in rare
+// compound-word cases (e.g. a name that happens to be a substring of a
+// compound noun). The longest-first replacement order, the stopword set,
+// and the post-edit "재분석" escape hatch in TranscriptEditor mitigate this.
 function buildNameRegex(name: string): RegExp {
   const escaped = escapeRegex(name);
   const pattern =
     `(?<=^|[\\s.,!?:;「『"'(\\[])` +
     escaped +
-    `(?=$|[\\s.,!?:;「』"')\\]]|[${PARTICLES}])`;
+    `(?=$|[\\s.,!?:;「』"')\\]]|[\\uAC00-\\uD7A3])`;
   return new RegExp(pattern, "g");
 }
 

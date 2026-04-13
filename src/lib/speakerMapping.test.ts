@@ -192,7 +192,7 @@ describe("applyMappingToAnalysis", () => {
     expect(table.content[0].notes).toBe("박철수이 검토");
   });
 
-  it("respects 조사 boundary: 홍길동이 -> 박철수가 (particle preserved)", () => {
+  it("respects 조사 boundary: name token swap, particle preserved literally", () => {
     const analysis: AnalysisResult = {
       title: "t",
       date: "d",
@@ -260,6 +260,36 @@ describe("applyMappingToAnalysis", () => {
     if (sec.type !== "numbered") throw new Error("wrong");
     expect(sec.content[0].description).toBe("김치 얘기를 했다");
     expect(unresolvedNames).toContain("김");
+  });
+
+  it("matches names followed by multi-syllable particles (한테/에게/께서)", () => {
+    const analysis: AnalysisResult = {
+      title: "t",
+      date: "d",
+      attendees: ["홍길동"],
+      sections: [
+        {
+          name: "n",
+          type: "numbered",
+          content: [
+            {
+              title: "t",
+              description: "홍길동한테 전달함. 홍길동에게 보고함. 홍길동께서 결정함.",
+            },
+          ],
+        },
+      ],
+    };
+    const { analysis: out } = applyMappingToAnalysis(
+      analysis,
+      { "1:1": "홍길동" },
+      { "1:1": "박철수" }
+    );
+    const sec = out.sections[0];
+    if (sec.type !== "numbered") throw new Error("wrong");
+    expect(sec.content[0].description).toBe(
+      "박철수한테 전달함. 박철수에게 보고함. 박철수께서 결정함."
+    );
   });
 
   it("no-op when oldMapping and newMapping are identical", () => {
