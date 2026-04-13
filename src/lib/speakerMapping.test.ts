@@ -52,4 +52,19 @@ describe("getSpeakerStats", () => {
       { originalSpeaker: "2:1", count: 1, globalIndex: 3 },
     ]);
   });
+
+  it("assigns globalIndex on first encounter, not on later occurrences", () => {
+    const segs = [
+      seg(1, "A:A"),
+      seg(2, "B:B"),
+      seg(3, "A:A"),
+      seg(4, "C:C"),
+      seg(5, "B:B"),
+    ];
+    expect(getSpeakerStats(segs)).toEqual([
+      { originalSpeaker: "A:A", count: 2, globalIndex: 1 },
+      { originalSpeaker: "B:B", count: 2, globalIndex: 2 },
+      { originalSpeaker: "C:C", count: 1, globalIndex: 3 },
+    ]);
+  });
 });
