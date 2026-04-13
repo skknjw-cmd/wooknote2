@@ -115,4 +115,21 @@ describe("resolveSegments", () => {
     const map: SpeakerMapping = { "1:1": "" };
     expect(resolveSegments(segs, map)).toBe("화자 1: 안녕");
   });
+
+  it("treats whitespace-only override as no override (falls back to mapping)", () => {
+    const segs: Segment[] = [
+      { ...seg(1, "1:1", "안녕"), speakerOverride: "   " },
+    ];
+    const map: SpeakerMapping = { "1:1": "홍길동" };
+    expect(resolveSegments(segs, map)).toBe("홍길동: 안녕");
+  });
+
+  it("renders empty-text segments without crashing (current behavior)", () => {
+    const segs: Segment[] = [
+      seg(1, "1:1", ""),
+      seg(2, "1:1", "둘째"),
+    ];
+    const map: SpeakerMapping = { "1:1": "홍길동" };
+    expect(resolveSegments(segs, map)).toBe("홍길동: \n둘째");
+  });
 });
