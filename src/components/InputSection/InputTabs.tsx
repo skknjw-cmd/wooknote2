@@ -28,9 +28,32 @@ export default function InputTabs({ value, onChange }: Props) {
   const segmentStartTimeRef = useRef<number>(0);
   const segmentRemainingRef = useRef<number>(SEGMENT_DURATION_MS);
   const accumulatedTextRef = useRef("");
+  const transcribingCountRef = useRef(0);
+  const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // onChange를 ref로 관리해 비동기 콜백에서 항상 최신 값 사용
   const onChangeRef = useRef(onChange);
   useEffect(() => { onChangeRef.current = onChange; });
+
+  const cleanupStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      isRecordingRef.current = false;
+      if (segmentTimerRef.current) clearTimeout(segmentTimerRef.current);
+      if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+      try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
 
   const handleTabClick = (type: "text" | "file" | "record") => {
     if (isRecording) stopRecording();
@@ -47,8 +70,9 @@ export default function InputTabs({ value, onChange }: Props) {
   };
 
   const processSegment = async (blob: Blob) => {
+    transcribingCountRef.current += 1;
     setIsTranscribing(true);
-    console.log(`[STT] 세그먼트 처리 시작 - 크기: ${(blob.size / 1024).toFixed(1)}KB, 타입: ${blob.type}`);
+    console.log(`[STT] 세그먼트 처리 시작 - 크기: ${(blob.size / 1024).toFixed(1)}KB, 타입: ${blob.type}, 활성: ${transcribingCountRef.current}`);
     try {
       if (blob.size < 1024) {
         throw new Error(`오디오 데이터가 너무 작습니다 (${blob.size} bytes)`);
@@ -57,18 +81,29 @@ export default function InputTabs({ value, onChange }: Props) {
       const formData = new FormData();
       formData.append("media", blob);
 
+      // 50초 타임아웃 (Vercel Hobby 60초 제한 대비)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 50000);
+
       const res = await fetch("/api/stt", {
         method: "POST",
         headers: getClovaHeaders(),
         body: formData,
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.details || errorData.error || `HTTP ${res.status}`);
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errorData = await res.json();
+          errMsg = errorData.details || errorData.error || errMsg;
+        } catch { /* non-JSON response */ }
+        throw new Error(errMsg);
       }
 
       const data = await res.json();
+      console.log("[STT] 변환 성공:", data.text?.slice(0, 50));
       if (data.text) {
         accumulatedTextRef.current = accumulatedTextRef.current
           ? `${accumulatedTextRef.current}\n${data.text}`
@@ -77,13 +112,19 @@ export default function InputTabs({ value, onChange }: Props) {
       }
     } catch (err: any) {
       console.error("STT Segment Error:", err);
-      const errorNote = `[구간 변환 실패: ${err.message}]`;
+      const msg = err.name === "AbortError" ? "요청 시간 초과 (50초)" : err.message;
+      const errorNote = `[구간 변환 실패: ${msg}]`;
       accumulatedTextRef.current = accumulatedTextRef.current
         ? `${accumulatedTextRef.current}\n${errorNote}`
         : errorNote;
       onChangeRef.current({ type: "record", content: accumulatedTextRef.current });
     } finally {
-      setIsTranscribing(false);
+      transcribingCountRef.current -= 1;
+      if (transcribingCountRef.current <= 0) {
+        transcribingCountRef.current = 0;
+        setIsTranscribing(false);
+      }
+      console.log(`[STT] 세그먼트 처리 완료, 남은 활성: ${transcribingCountRef.current}`);
     }
   };
 
@@ -111,17 +152,49 @@ export default function InputTabs({ value, onChange }: Props) {
     };
 
     mediaRecorder.onstop = async () => {
-      const actualType = mediaRecorder.mimeType || mimeType || "audio/webm";
-      const blob = new Blob(chunksRef.current, { type: actualType });
-      chunksRef.current = [];
-
-      // 아직 녹음 중이면 다음 세그먼트 바로 시작
-      if (isRecordingRef.current) {
-        setSegmentCount((prev) => prev + 1);
-        startSegment(stream);
+      // watchdog 해제
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
       }
 
-      await processSegment(blob);
+      const actualType = mediaRecorder.mimeType || mimeType || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type: actualType });
+      const chunkCount = chunksRef.current.length;
+      chunksRef.current = [];
+      console.log(`[REC] onstop - chunks: ${chunkCount}, blob: ${(blob.size / 1024).toFixed(1)}KB, isRecording: ${isRecordingRef.current}`);
+
+      if (isRecordingRef.current) {
+        // 아직 녹음 중 → 다음 세그먼트 시작
+        setSegmentCount((prev) => prev + 1);
+        startSegment(stream);
+      } else {
+        // 녹음 종료 → stream 정리 및 UI 상태 업데이트
+        cleanupStream();
+        setIsRecording(false);
+      }
+
+      // blob이 유효한 경우에만 STT 처리
+      if (blob.size >= 1024) {
+        await processSegment(blob);
+      } else {
+        console.warn(`[REC] 세그먼트 건너뜀: ${blob.size} bytes (너무 작음)`);
+      }
+    };
+
+    mediaRecorder.onerror = (event) => {
+      console.error("[REC] MediaRecorder error:", event);
+      // 에러 발생 시 수집된 chunks로 최대한 복구
+      if (chunksRef.current.length > 0) {
+        const actualType = mediaRecorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: actualType });
+        chunksRef.current = [];
+        if (blob.size >= 1024) processSegment(blob);
+      }
+      if (!isRecordingRef.current) {
+        cleanupStream();
+        setIsRecording(false);
+      }
     };
 
     mediaRecorder.start();
@@ -188,14 +261,34 @@ export default function InputTabs({ value, onChange }: Props) {
       clearTimeout(segmentTimerRef.current);
       segmentTimerRef.current = null;
     }
-    const state = mediaRecorderRef.current?.state;
-    if (state === "recording" || state === "paused") {
-      if (state === "paused") mediaRecorderRef.current!.resume();
-      mediaRecorderRef.current!.stop();
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") {
+      cleanupStream();
+      setIsRecording(false);
+      return;
     }
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    setIsRecording(false);
+
+    // requestData()로 버퍼 데이터 flush 후 stop() 직접 호출
+    // W3C spec: stop()은 "recording"과 "paused" 양쪽에서 호출 가능
+    try { recorder.requestData(); } catch { /* ignore */ }
+    try { recorder.stop(); } catch {
+      // stop() 실패 시 직접 정리
+      cleanupStream();
+      setIsRecording(false);
+      return;
+    }
+
+    // onstop이 발생하지 않는 극단적 상황 대비 5초 watchdog
+    if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+    watchdogTimerRef.current = setTimeout(() => {
+      console.warn("[REC] Watchdog: onstop이 5초 내 미발생. 강제 정리.");
+      cleanupStream();
+      setIsRecording(false);
+      mediaRecorderRef.current = null;
+    }, 5000);
+
+    // 주의: setIsRecording(false)와 stream 정리는 onstop 핸들러에서 처리
   };
 
   const toggleRecording = () => {

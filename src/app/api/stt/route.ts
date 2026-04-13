@@ -52,7 +52,16 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await response.json();
-    
+    console.log("[STT Server] Clova 응답:", JSON.stringify(data).slice(0, 500));
+
+    // Clova가 HTTP 200이지만 result:"FAILED"를 반환하는 경우 처리
+    if (data.result === "FAILED") {
+      return NextResponse.json(
+        { error: "STT 변환 실패", details: data.message || "알 수 없는 오류" },
+        { status: 422 }
+      );
+    }
+
     // 화자 분리 정보가 있는 경우 세그먼트별로 포맷팅
     if (data.segments && data.segments.length > 0) {
       const formattedText = data.segments
