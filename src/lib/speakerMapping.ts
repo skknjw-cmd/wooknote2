@@ -8,6 +8,8 @@ const NAME_COLLISION_STOPWORDS = new Set<string>([
   "김치", "김밥", "김포", "이사", "이사회", "이사진", "박사", "박수",
   "최고", "최근", "정리", "정치", "정부", "강조", "조정", "조금",
   "장소", "장기", "임시",
+  "강남", "강북", "박물관", "이해", "이익", "정의", "임금", "장남",
+  "차장", "과장", "부장", "대리", "사장", "회장", "이사님",
 ]);
 
 // Escapes a string for use inside a RegExp literal.
@@ -179,7 +181,10 @@ export function applyMappingToAnalysis(
     };
   });
 
-  const removeOldNames = new Set(safeRenames.map((r) => r.oldName));
+  // Remove ALL old names from attendees — even stopword-blocked ones,
+  // since the new name will be added via the newMapping union below.
+  // Unresolved names only mean the BODY text couldn't be safely rewritten.
+  const removeOldNames = new Set(renames.map((r) => r.oldName));
   const cleanedOld = analysis.attendees.filter((a) => !removeOldNames.has(a));
   const mergedAttendees: string[] = [];
   const seen = new Set<string>();

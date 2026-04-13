@@ -292,6 +292,34 @@ describe("applyMappingToAnalysis", () => {
     );
   });
 
+  it("removes stopword-blocked old name from attendees even though body text is not rewritten", () => {
+    const analysis: AnalysisResult = {
+      title: "t",
+      date: "d",
+      attendees: ["김", "김영희"],
+      sections: [
+        {
+          name: "n",
+          type: "numbered",
+          content: [{ title: "t", description: "김치 얘기를 했다" }],
+        },
+      ],
+    };
+    const { analysis: out, unresolvedNames } = applyMappingToAnalysis(
+      analysis,
+      { "1:1": "김", "1:2": "김영희" },
+      { "1:1": "박철수", "1:2": "김영희" }
+    );
+    expect(unresolvedNames).toContain("김");
+    expect(out.attendees).toContain("박철수");
+    expect(out.attendees).not.toContain("김");
+    expect(out.attendees).toContain("김영희");
+    const sec = out.sections[0];
+    if (sec.type !== "numbered") throw new Error("wrong");
+    // Body text not rewritten (stopword-blocked)
+    expect(sec.content[0].description).toBe("김치 얘기를 했다");
+  });
+
   it("no-op when oldMapping and newMapping are identical", () => {
     const analysis = makeAnalysis();
     const map = { "1:1": "홍길동", "1:2": "김영희" };

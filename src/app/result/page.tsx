@@ -47,6 +47,8 @@ export default function ResultPage() {
     nextSegments: Segment[]
   ) => {
     if (!savedResult) return;
+    // Preserve original generatedAt so the 30-day TTL stays anchored to
+    // the first generation, not to each post-edit save.
     saveMeetingResult({
       analysis: nextAnalysis,
       segments: nextSegments,
