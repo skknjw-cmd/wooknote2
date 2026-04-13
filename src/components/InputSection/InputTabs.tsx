@@ -31,7 +31,6 @@ export default function InputTabs({ value, onChange }: Props) {
   const sequenceCounterRef = useRef(0);
   const idCounterRef = useRef(0);
   const cumulativeOffsetMsRef = useRef(0);
-  const activeSequenceIdRef = useRef(0);
 
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -98,15 +97,27 @@ export default function InputTabs({ value, onChange }: Props) {
     sequenceId: number,
     elapsedMs: number
   ) => {
+    // Size check first — don't advance cumulative offset for empty/invalid blobs.
+    if (blob.size < 1024) {
+      const errorSegment: Segment = {
+        id: nextSegmentId(),
+        sequenceId,
+        originalSpeaker: `${sequenceId}:?`,
+        text: `[구간 변환 실패: 오디오 데이터가 너무 작습니다 (${blob.size} bytes)]`,
+      };
+      if (!segmentsMapRef.current.has(sequenceId)) {
+        segmentsMapRef.current.set(sequenceId, [errorSegment]);
+        emitAllSegments();
+      }
+      return;
+    }
+
     transcribingCountRef.current += 1;
     setIsTranscribing(true);
     const offsetBase = cumulativeOffsetMsRef.current;
     cumulativeOffsetMsRef.current += elapsedMs;
 
     try {
-      if (blob.size < 1024) {
-        throw new Error(`오디오 데이터가 너무 작습니다 (${blob.size} bytes)`);
-      }
       const formData = new FormData();
       formData.append("media", blob);
 
@@ -164,8 +175,10 @@ export default function InputTabs({ value, onChange }: Props) {
         originalSpeaker: `${sequenceId}:?`,
         text: `[구간 변환 실패: ${name}]`,
       };
-      segmentsMapRef.current.set(sequenceId, [errorSegment]);
-      emitAllSegments();
+      if (!segmentsMapRef.current.has(sequenceId)) {
+        segmentsMapRef.current.set(sequenceId, [errorSegment]);
+        emitAllSegments();
+      }
     } finally {
       transcribingCountRef.current -= 1;
       if (transcribingCountRef.current <= 0) {
@@ -196,7 +209,6 @@ export default function InputTabs({ value, onChange }: Props) {
 
     sequenceCounterRef.current += 1;
     const thisSeq = sequenceCounterRef.current;
-    activeSequenceIdRef.current = thisSeq;
     const chunkStart = Date.now();
 
     mediaRecorder.ondataavailable = (e) => {
@@ -227,6 +239,10 @@ export default function InputTabs({ value, onChange }: Props) {
     };
 
     mediaRecorder.onerror = (event) => {
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
       console.error("[REC] MediaRecorder error:", event);
       if (chunksRef.current.length > 0) {
         const actualType = mediaRecorder.mimeType || mimeType || "audio/webm";
