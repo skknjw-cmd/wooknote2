@@ -1,5 +1,5 @@
 // src/lib/speakerMapping.ts
-import type { Segment } from "@/types/meeting";
+import type { Segment, SpeakerMapping } from "@/types/meeting";
 
 export type SpeakerStat = {
   originalSpeaker: string;
@@ -38,4 +38,42 @@ export function parseAttendees(csv: string): string[] {
     result.push(name);
   }
   return result;
+}
+
+export function resolveSegments(
+  segments: Segment[],
+  mapping: SpeakerMapping
+): string {
+  if (segments.length === 0) return "";
+
+  const stats = getSpeakerStats(segments);
+  const indexByKey = new Map(
+    stats.map((s) => [s.originalSpeaker, s.globalIndex])
+  );
+
+  const effectiveNameOf = (s: Segment): string => {
+    if (s.speakerOverride && s.speakerOverride.trim()) {
+      return s.speakerOverride.trim();
+    }
+    const mapped = mapping[s.originalSpeaker];
+    if (mapped && mapped.trim()) return mapped.trim();
+    const idx = indexByKey.get(s.originalSpeaker) ?? 0;
+    return `화자 ${idx}`;
+  };
+
+  type Block = { speaker: string; lines: string[] };
+  const blocks: Block[] = [];
+  for (const s of segments) {
+    const name = effectiveNameOf(s);
+    const last = blocks[blocks.length - 1];
+    if (last && last.speaker === name) {
+      last.lines.push(s.text);
+    } else {
+      blocks.push({ speaker: name, lines: [s.text] });
+    }
+  }
+
+  return blocks
+    .map((b) => `${b.speaker}: ${b.lines.join("\n")}`)
+    .join("\n\n");
 }

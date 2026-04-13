@@ -68,3 +68,51 @@ describe("getSpeakerStats", () => {
     ]);
   });
 });
+
+import { resolveSegments } from "./speakerMapping";
+import type { SpeakerMapping } from "@/types/meeting";
+
+describe("resolveSegments", () => {
+  it("falls back to 화자 N when no mapping", () => {
+    const segs: Segment[] = [
+      seg(1, "1:1", "안녕하세요"),
+      seg(2, "1:2", "반갑습니다"),
+    ];
+    expect(resolveSegments(segs, {})).toBe(
+      "화자 1: 안녕하세요\n\n화자 2: 반갑습니다"
+    );
+  });
+
+  it("uses mapping when present", () => {
+    const segs: Segment[] = [seg(1, "1:1", "안녕")];
+    const map: SpeakerMapping = { "1:1": "홍길동" };
+    expect(resolveSegments(segs, map)).toBe("홍길동: 안녕");
+  });
+
+  it("speakerOverride wins over mapping", () => {
+    const segs: Segment[] = [
+      { ...seg(1, "1:1", "안녕"), speakerOverride: "김영희" },
+    ];
+    const map: SpeakerMapping = { "1:1": "홍길동" };
+    expect(resolveSegments(segs, map)).toBe("김영희: 안녕");
+  });
+
+  it("merges consecutive same-speaker segments into one block", () => {
+    const segs: Segment[] = [
+      seg(1, "1:1", "첫 번째"),
+      seg(2, "1:1", "두 번째"),
+      seg(3, "1:2", "다른 사람"),
+      seg(4, "1:1", "다시 첫 번째"),
+    ];
+    const map: SpeakerMapping = { "1:1": "홍길동", "1:2": "김영희" };
+    expect(resolveSegments(segs, map)).toBe(
+      "홍길동: 첫 번째\n두 번째\n\n김영희: 다른 사람\n\n홍길동: 다시 첫 번째"
+    );
+  });
+
+  it("treats empty-string mapping as no mapping (falls back to 화자 N)", () => {
+    const segs: Segment[] = [seg(1, "1:1", "안녕")];
+    const map: SpeakerMapping = { "1:1": "" };
+    expect(resolveSegments(segs, map)).toBe("화자 1: 안녕");
+  });
+});
