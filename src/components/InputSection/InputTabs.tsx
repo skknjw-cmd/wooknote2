@@ -1,16 +1,17 @@
 import React, { useRef, useState, useEffect } from "react";
 import styles from "./InputTabs.module.css";
 import type { Segment, InputData } from "@/types/meeting";
-import { resolveSegments } from "@/lib/speakerMapping";
+import { resolveSegments, parseAttendees } from "@/lib/speakerMapping";
 
 const SEGMENT_DURATION_MS = 2 * 60 * 1000;
 
 interface Props {
   value: InputData;
+  attendeesCsv: string;
   onChange: (val: InputData) => void;
 }
 
-export default function InputTabs({ value, onChange }: Props) {
+export default function InputTabs({ value, attendeesCsv, onChange }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -72,6 +73,8 @@ export default function InputTabs({ value, onChange }: Props) {
     const headers: Record<string, string> = {};
     if (settings.clovaInvokeUrl) headers["x-clova-url"] = settings.clovaInvokeUrl;
     if (settings.clovaSecretKey) headers["x-clova-key"] = settings.clovaSecretKey;
+    const count = parseAttendees(attendeesCsv).length;
+    if (count > 0) headers["x-attendee-count"] = String(count);
     return headers;
   };
 

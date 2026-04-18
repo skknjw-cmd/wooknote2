@@ -113,6 +113,12 @@ export default function Home() {
         customHeaders["x-clova-url"] = settings.clovaInvokeUrl;
       if (settings.clovaSecretKey)
         customHeaders["x-clova-key"] = settings.clovaSecretKey;
+      const attendeeCount = meetingInfo.attendees
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean).length;
+      if (attendeeCount > 0)
+        customHeaders["x-attendee-count"] = String(attendeeCount);
 
       let finalContent = "";
 
@@ -281,7 +287,11 @@ export default function Home() {
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>회의 내용 입력</h2>
-          <InputTabs value={inputData} onChange={setInputData} />
+          <InputTabs
+            value={inputData}
+            attendeesCsv={meetingInfo.attendees}
+            onChange={setInputData}
+          />
           {hasSegments && (
             <SpeakerMappingPanel
               segments={inputData.segments ?? []}
