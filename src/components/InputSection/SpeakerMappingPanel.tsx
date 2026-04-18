@@ -126,6 +126,42 @@ export default function SpeakerMappingPanel({
   const canShowUndo =
     hasAutoMerged && !isRecording && !isTranscribing && !disabled;
 
+  const attendeeCount = useMemo(
+    () => parseAttendees(attendeesCsv).length,
+    [attendeesCsv]
+  );
+
+  const proposals = useMemo(
+    () => proposeExcessMerge(segments, attendeeCount),
+    [segments, attendeeCount]
+  );
+
+  const showSuggestCard =
+    suggestionState === "visible" &&
+    !isRecording &&
+    !isTranscribing &&
+    !disabled &&
+    proposals.length > 0;
+
+  // Map originalSpeaker key -> "화자 N" label via getSpeakerStats globalIndex
+  const labelByKey = useMemo(() => {
+    const stats = getSpeakerStats(segments);
+    const map = new Map<string, string>();
+    for (const s of stats) {
+      map.set(s.originalSpeaker, `화자 ${s.globalIndex}`);
+    }
+    return map;
+  }, [segments]);
+
+  // Per-key utterance count (across all chunks — used for "발화 N회" display)
+  const countByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of segments) {
+      m.set(s.originalSpeaker, (m.get(s.originalSpeaker) ?? 0) + 1);
+    }
+    return m;
+  }, [segments]);
+
   if (segments.length === 0) return null;
 
   return (
@@ -182,6 +218,47 @@ export default function SpeakerMappingPanel({
               >
                 ×
               </button>
+            </div>
+          )}
+
+          {showSuggestCard && (
+            <div className={styles.suggestCard} role="note">
+              <div>
+                ⚠ 일부 청크에서 참석자 수({attendeeCount}명)를 초과하는 화자가 감지되었습니다.
+                Clova가 동일 인물을 여러 화자로 쪼갠 경우일 수 있습니다.
+              </div>
+              <ul style={{ margin: "0.5rem 0 0.75rem 1.2rem", padding: 0 }}>
+                {proposals.map((p) => {
+                  const fromLabel = labelByKey.get(p.from) ?? p.from;
+                  const toLabel = labelByKey.get(p.to) ?? p.to;
+                  const seq = p.from.split(":")[0];
+                  const count = countByKey.get(p.from) ?? 0;
+                  return (
+                    <li key={`${p.from}->${p.to}`} style={{ margin: "0.15rem 0" }}>
+                      청크 {seq}: {fromLabel} (발화 {count}회) → {toLabel} (같은 청크)
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className={styles.suggestCardActions}>
+                <button
+                  type="button"
+                  className={styles.suggestApply}
+                  onClick={() => {
+                    onApplyExcessMerge(proposals);
+                    setSuggestionState("applied");
+                  }}
+                >
+                  자동 병합 적용
+                </button>
+                <button
+                  type="button"
+                  className={styles.suggestDismiss}
+                  onClick={() => setSuggestionState("dismissed")}
+                >
+                  무시
+                </button>
+              </div>
             </div>
           )}
 
