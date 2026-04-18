@@ -1,16 +1,27 @@
 import React, { useRef, useState, useEffect } from "react";
 import styles from "./InputTabs.module.css";
 import type { Segment, InputData } from "@/types/meeting";
-import { resolveSegments } from "@/lib/speakerMapping";
+import { resolveSegments, parseAttendees } from "@/lib/speakerMapping";
+import { computeBoundaryMerge } from "@/lib/speakerMerge";
 
 const SEGMENT_DURATION_MS = 2 * 60 * 1000;
 
 interface Props {
   value: InputData;
+  attendeesCsv: string;
   onChange: (val: InputData) => void;
+  onStatusChange?: (status: {
+    isRecording: boolean;
+    isTranscribing: boolean;
+  }) => void;
 }
 
-export default function InputTabs({ value, onChange }: Props) {
+export default function InputTabs({
+  value,
+  attendeesCsv,
+  onChange,
+  onStatusChange,
+}: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -36,6 +47,15 @@ export default function InputTabs({ value, onChange }: Props) {
   useEffect(() => {
     onChangeRef.current = onChange;
   });
+
+  const onStatusChangeRef = useRef(onStatusChange);
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  });
+
+  useEffect(() => {
+    onStatusChangeRef.current?.({ isRecording, isTranscribing });
+  }, [isRecording, isTranscribing]);
 
   const cleanupStream = () => {
     if (streamRef.current) {
@@ -72,6 +92,8 @@ export default function InputTabs({ value, onChange }: Props) {
     const headers: Record<string, string> = {};
     if (settings.clovaInvokeUrl) headers["x-clova-url"] = settings.clovaInvokeUrl;
     if (settings.clovaSecretKey) headers["x-clova-key"] = settings.clovaSecretKey;
+    const count = parseAttendees(attendeesCsv).length;
+    if (count > 0) headers["x-attendee-count"] = String(count);
     return headers;
   };
 
@@ -81,14 +103,15 @@ export default function InputTabs({ value, onChange }: Props) {
   };
 
   const emitAllSegments = () => {
-    const allSegments = Array.from(segmentsMapRef.current.entries())
+    const rawSegments = Array.from(segmentsMapRef.current.entries())
       .sort(([a], [b]) => a - b)
       .flatMap(([, segs]) => segs);
-    const content = resolveSegments(allSegments, {});
+    const mergedSegments = computeBoundaryMerge(rawSegments);
+    const content = resolveSegments(mergedSegments, {});
     onChangeRef.current({
       type: "record",
       content,
-      segments: allSegments,
+      segments: mergedSegments,
     });
   };
 
@@ -103,6 +126,7 @@ export default function InputTabs({ value, onChange }: Props) {
         id: nextSegmentId(),
         sequenceId,
         originalSpeaker: `${sequenceId}:?`,
+        rawClovaKey: `${sequenceId}:?`,
         text: `[구간 변환 실패: 오디오 데이터가 너무 작습니다 (${blob.size} bytes)]`,
       };
       if (!segmentsMapRef.current.has(sequenceId)) {
@@ -150,15 +174,19 @@ export default function InputTabs({ value, onChange }: Props) {
         end?: number;
       }> = Array.isArray(data.segments) ? data.segments : [];
 
-      const newSegments: Segment[] = incoming.map((s) => ({
-        id: nextSegmentId(),
-        sequenceId,
-        originalSpeaker: `${sequenceId}:${s.clovaLabel}`,
-        text: s.text,
-        start:
-          typeof s.start === "number" ? offsetBase + s.start : undefined,
-        end: typeof s.end === "number" ? offsetBase + s.end : undefined,
-      }));
+      const newSegments: Segment[] = incoming.map((s) => {
+        const key = `${sequenceId}:${s.clovaLabel}`;
+        return {
+          id: nextSegmentId(),
+          sequenceId,
+          originalSpeaker: key,
+          rawClovaKey: key,
+          text: s.text,
+          start:
+            typeof s.start === "number" ? offsetBase + s.start : undefined,
+          end: typeof s.end === "number" ? offsetBase + s.end : undefined,
+        };
+      });
 
       segmentsMapRef.current.set(sequenceId, newSegments);
       emitAllSegments();
@@ -173,6 +201,7 @@ export default function InputTabs({ value, onChange }: Props) {
         id: nextSegmentId(),
         sequenceId,
         originalSpeaker: `${sequenceId}:?`,
+        rawClovaKey: `${sequenceId}:?`,
         text: `[구간 변환 실패: ${name}]`,
       };
       if (!segmentsMapRef.current.has(sequenceId)) {

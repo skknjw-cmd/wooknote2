@@ -11,6 +11,7 @@ import SpeakerMappingPanel from "@/components/InputSection/SpeakerMappingPanel";
 import { resolveSegments } from "@/lib/speakerMapping";
 import { saveMeetingResult } from "@/lib/meetingStorage";
 import type { InputData, SpeakerMapping } from "@/types/meeting";
+import type { MergeProposal } from "@/lib/speakerMerge";
 
 export default function Home() {
   const router = useRouter();
@@ -43,6 +44,10 @@ export default function Home() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [addedAttendeeChips, setAddedAttendeeChips] = useState<string[]>([]);
+  const [recorderStatus, setRecorderStatus] = useState({
+    isRecording: false,
+    isTranscribing: false,
+  });
 
   useEffect(() => {
     const saved = localStorage.getItem("wooks_temp_input");
@@ -60,6 +65,32 @@ export default function Home() {
 
   const handleMappingChange = (next: SpeakerMapping) => {
     setInputData((prev) => ({ ...prev, mapping: next }));
+  };
+
+  const handleApplyExcessMerge = (proposals: MergeProposal[]) => {
+    setInputData((prev) => {
+      const segs = prev.segments ?? [];
+      if (segs.length === 0 || proposals.length === 0) return prev;
+      const rename = new Map(proposals.map((p) => [p.from, p.to]));
+      const nextSegs = segs.map((s) => {
+        const to = rename.get(s.originalSpeaker);
+        return to ? { ...s, originalSpeaker: to } : s;
+      });
+      return { ...prev, segments: nextSegs };
+    });
+  };
+
+  const handleGlobalUndo = () => {
+    setInputData((prev) => {
+      const segs = prev.segments ?? [];
+      if (segs.length === 0) return prev;
+      const nextSegs = segs.map((s) =>
+        s.rawClovaKey && s.rawClovaKey !== s.originalSpeaker
+          ? { ...s, originalSpeaker: s.rawClovaKey }
+          : s
+      );
+      return { ...prev, segments: nextSegs };
+    });
   };
 
   const handleAttendeeAdd = (name: string) => {
@@ -113,6 +144,12 @@ export default function Home() {
         customHeaders["x-clova-url"] = settings.clovaInvokeUrl;
       if (settings.clovaSecretKey)
         customHeaders["x-clova-key"] = settings.clovaSecretKey;
+      const attendeeCount = meetingInfo.attendees
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean).length;
+      if (attendeeCount > 0)
+        customHeaders["x-attendee-count"] = String(attendeeCount);
 
       let finalContent = "";
 
@@ -281,14 +318,23 @@ export default function Home() {
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>회의 내용 입력</h2>
-          <InputTabs value={inputData} onChange={setInputData} />
+          <InputTabs
+            value={inputData}
+            attendeesCsv={meetingInfo.attendees}
+            onChange={setInputData}
+            onStatusChange={setRecorderStatus}
+          />
           {hasSegments && (
             <SpeakerMappingPanel
               segments={inputData.segments ?? []}
               mapping={inputData.mapping ?? {}}
               attendeesCsv={meetingInfo.attendees}
+              isRecording={recorderStatus.isRecording}
+              isTranscribing={recorderStatus.isTranscribing}
               onChange={handleMappingChange}
               onAttendeeAdd={handleAttendeeAdd}
+              onApplyExcessMerge={handleApplyExcessMerge}
+              onGlobalUndo={handleGlobalUndo}
             />
           )}
           <button

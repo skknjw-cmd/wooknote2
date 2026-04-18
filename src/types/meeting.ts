@@ -8,7 +8,8 @@
 export type Segment = {
   id: string; // "seg_000001" monotonic counter
   sequenceId: number; // recording chunk order
-  originalSpeaker: string; // e.g. "1:1", "2:1"
+  originalSpeaker: string; // e.g. "1:1", "2:1" — group key; may be rewritten by auto-merge
+  rawClovaKey?: string; // immutable "${sequenceId}:${clovaLabel}" for undo of auto-merge
   text: string;
   start?: number; // cumulative ms from recording start
   end?: number;

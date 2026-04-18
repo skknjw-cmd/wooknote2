@@ -137,3 +137,74 @@
   min-width: 24px;
   min-height: 24px;
 }
+
+.autoBadge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  cursor: help;
+  vertical-align: middle;
+}
+
+.undoButton {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  min-height: 32px;
+}
+
+.undoButton:hover {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.suggestCard {
+  background: #fff7ed;
+  border-left: 4px solid #f59e0b;
+  padding: 0.75rem 0.9rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #7c2d12;
+}
+
+.suggestCardActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.suggestApply {
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.suggestApply:hover {
+  background: #d97706;
+}
+
+.suggestDismiss {
+  background: transparent;
+  border: 1px solid #fed7aa;
+  color: #7c2d12;
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  min-height: 36px;
+}

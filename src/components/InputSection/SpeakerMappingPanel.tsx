@@ -2,6 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 import styles from "./SpeakerMappingPanel.module.css";
 import type { Segment, SpeakerMapping } from "@/types/meeting";
 import { getSpeakerStats, parseAttendees } from "@/lib/speakerMapping";
+import { proposeExcessMerge, type MergeProposal } from "@/lib/speakerMerge";
 
 const ONBOARDING_KEY = "wooks_onboarding_speaker";
 
@@ -10,6 +11,7 @@ type SpeakerRow = {
   originalSpeakers: string[];
   count: number;
   currentName: string;
+  absorbedRawKeys: string[]; // rawClovaKey values absorbed via auto-merge
 };
 
 interface Props {
@@ -18,8 +20,12 @@ interface Props {
   attendeesCsv: string;
   defaultCollapsed?: boolean;
   disabled?: boolean;
+  isRecording: boolean;
+  isTranscribing: boolean;
   onChange: (mapping: SpeakerMapping) => void;
   onAttendeeAdd?: (name: string) => void;
+  onApplyExcessMerge: (proposals: MergeProposal[]) => void;
+  onGlobalUndo: () => void;
 }
 
 export default function SpeakerMappingPanel({
@@ -28,8 +34,12 @@ export default function SpeakerMappingPanel({
   attendeesCsv,
   defaultCollapsed = true,
   disabled = false,
+  isRecording,
+  isTranscribing,
   onChange,
   onAttendeeAdd,
+  onApplyExcessMerge,
+  onGlobalUndo,
 }: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [onboardingDismissed, setOnboardingDismissed] = useState(true);
@@ -45,6 +55,15 @@ export default function SpeakerMappingPanel({
     setOnboardingDismissed(true);
   };
 
+  const [suggestionState, setSuggestionState] = useState<
+    "visible" | "dismissed" | "applied"
+  >("visible");
+
+  // Reset when a new recording starts (segments cleared)
+  useEffect(() => {
+    if (segments.length === 0) setSuggestionState("visible");
+  }, [segments.length]);
+
   const attendeeOptions = useMemo(
     () => parseAttendees(attendeesCsv),
     [attendeesCsv]
@@ -52,9 +71,21 @@ export default function SpeakerMappingPanel({
 
   const rows: SpeakerRow[] = useMemo(() => {
     const stats = getSpeakerStats(segments);
+
+    // Per-originalSpeaker absorbed raw keys (rawClovaKey differing from originalSpeaker)
+    const absorbedByKey = new Map<string, Set<string>>();
+    for (const s of segments) {
+      if (s.rawClovaKey && s.rawClovaKey !== s.originalSpeaker) {
+        const set = absorbedByKey.get(s.originalSpeaker) ?? new Set<string>();
+        set.add(s.rawClovaKey);
+        absorbedByKey.set(s.originalSpeaker, set);
+      }
+    }
+
     const merged: SpeakerRow[] = [];
     for (const s of stats) {
       const name = (mapping[s.originalSpeaker] || "").trim();
+      const absorbed = Array.from(absorbedByKey.get(s.originalSpeaker) ?? []);
       if (name) {
         const existing = merged.find(
           (m) => m.currentName === name && m.currentName !== ""
@@ -63,6 +94,10 @@ export default function SpeakerMappingPanel({
           existing.originalSpeakers.push(s.originalSpeaker);
           existing.count += s.count;
           existing.globalIndex = Math.min(existing.globalIndex, s.globalIndex);
+          for (const k of absorbed) {
+            if (!existing.absorbedRawKeys.includes(k))
+              existing.absorbedRawKeys.push(k);
+          }
           continue;
         }
       }
@@ -71,6 +106,7 @@ export default function SpeakerMappingPanel({
         originalSpeakers: [s.originalSpeaker],
         count: s.count,
         currentName: name,
+        absorbedRawKeys: absorbed,
       });
     }
     merged.sort((a, b) => a.globalIndex - b.globalIndex);
@@ -78,6 +114,53 @@ export default function SpeakerMappingPanel({
   }, [segments, mapping]);
 
   const speakerCount = rows.length;
+
+  const hasAutoMerged = useMemo(
+    () =>
+      segments.some(
+        (s) => s.rawClovaKey && s.rawClovaKey !== s.originalSpeaker
+      ),
+    [segments]
+  );
+
+  const canShowUndo =
+    hasAutoMerged && !isRecording && !isTranscribing && !disabled;
+
+  const attendeeCount = useMemo(
+    () => parseAttendees(attendeesCsv).length,
+    [attendeesCsv]
+  );
+
+  const proposals = useMemo(
+    () => proposeExcessMerge(segments, attendeeCount),
+    [segments, attendeeCount]
+  );
+
+  const showSuggestCard =
+    suggestionState === "visible" &&
+    !isRecording &&
+    !isTranscribing &&
+    !disabled &&
+    proposals.length > 0;
+
+  // Map originalSpeaker key -> "화자 N" label via getSpeakerStats globalIndex
+  const labelByKey = useMemo(() => {
+    const stats = getSpeakerStats(segments);
+    const map = new Map<string, string>();
+    for (const s of stats) {
+      map.set(s.originalSpeaker, `화자 ${s.globalIndex}`);
+    }
+    return map;
+  }, [segments]);
+
+  // Per-key utterance count (across all chunks — used for "발화 N회" display)
+  const countByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of segments) {
+      m.set(s.originalSpeaker, (m.get(s.originalSpeaker) ?? 0) + 1);
+    }
+    return m;
+  }, [segments]);
 
   if (segments.length === 0) return null;
 
@@ -100,6 +183,22 @@ export default function SpeakerMappingPanel({
           화자 이름 지정
           <span className={styles.badge}>{speakerCount}명 감지됨</span>
         </h3>
+        {canShowUndo && (
+          <button
+            type="button"
+            className={styles.undoButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm("모든 자동 병합을 취소하시겠습니까?")) {
+                onGlobalUndo();
+                setSuggestionState("dismissed");
+              }
+            }}
+            aria-label="자동 병합 전체 취소"
+          >
+            자동 병합 전체 취소
+          </button>
+        )}
         <span className={styles.chevron}>{collapsed ? "▾" : "▴"}</span>
       </div>
 
@@ -119,6 +218,47 @@ export default function SpeakerMappingPanel({
               >
                 ×
               </button>
+            </div>
+          )}
+
+          {showSuggestCard && (
+            <div className={styles.suggestCard} role="note">
+              <div>
+                ⚠ 일부 청크에서 참석자 수({attendeeCount}명)를 초과하는 화자가 감지되었습니다.
+                Clova가 동일 인물을 여러 화자로 쪼갠 경우일 수 있습니다.
+              </div>
+              <ul style={{ margin: "0.5rem 0 0.75rem 1.2rem", padding: 0 }}>
+                {proposals.map((p) => {
+                  const fromLabel = labelByKey.get(p.from) ?? p.from;
+                  const toLabel = labelByKey.get(p.to) ?? p.to;
+                  const seq = p.from.split(":")[0];
+                  const count = countByKey.get(p.from) ?? 0;
+                  return (
+                    <li key={`${p.from}->${p.to}`} style={{ margin: "0.15rem 0" }}>
+                      청크 {seq}: {fromLabel} (발화 {count}회) → {toLabel} (같은 청크)
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className={styles.suggestCardActions}>
+                <button
+                  type="button"
+                  className={styles.suggestApply}
+                  onClick={() => {
+                    onApplyExcessMerge(proposals);
+                    setSuggestionState("applied");
+                  }}
+                >
+                  자동 병합 적용
+                </button>
+                <button
+                  type="button"
+                  className={styles.suggestDismiss}
+                  onClick={() => setSuggestionState("dismissed")}
+                >
+                  무시
+                </button>
+              </div>
             </div>
           )}
 
@@ -157,6 +297,14 @@ interface RowProps {
   onAddAttendee: (name: string) => void;
 }
 
+function formatAbsorbed(rawKeys: string[]): string {
+  const parts = rawKeys.map((k) => {
+    const [seq, label] = k.split(":");
+    return `청크 ${seq} 화자 ${label}`;
+  });
+  return `${parts.join(", ")}로부터 자동 병합됨`;
+}
+
 function SpeakerRowView({
   row,
   attendeeOptions,
@@ -191,9 +339,24 @@ function SpeakerRowView({
       ? `화자 ${row.globalIndex}·병합`
       : `화자 ${row.globalIndex}`;
 
+  const autoMergedCount = row.absorbedRawKeys.length;
+  const absorbedTitle =
+    autoMergedCount > 0 ? formatAbsorbed(row.absorbedRawKeys) : undefined;
+
   return (
     <div className={styles.row} role="group" aria-label={`${label}의 실제 이름`}>
-      <div className={styles.rowLabel}>{label}</div>
+      <div className={styles.rowLabel}>
+        {label}
+        {autoMergedCount > 0 && (
+          <span
+            className={styles.autoBadge}
+            title={absorbedTitle}
+            aria-label={`자동 병합 ${autoMergedCount}개. ${absorbedTitle}`}
+          >
+            자동 병합 {autoMergedCount}개
+          </span>
+        )}
+      </div>
       {mode === "select" ? (
         <select
           className={styles.select}

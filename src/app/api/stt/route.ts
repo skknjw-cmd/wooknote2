@@ -43,10 +43,21 @@ export async function POST(req: NextRequest) {
 
     const clovaFormData = new FormData();
     clovaFormData.append("media", file, "audio.webm");
+    const attendeeCountRaw = req.headers.get("x-attendee-count");
+    const attendeeCount = parseInt(attendeeCountRaw ?? "", 10);
+    const speakerCountMax =
+      Number.isFinite(attendeeCount) && attendeeCount > 0
+        ? Math.min(attendeeCount + 1, 10)
+        : 10;
+
     const params = {
       language: "ko-KR",
       completion: "sync",
-      diarization: { enable: true, speakerCountMin: 1, speakerCountMax: 10 },
+      diarization: {
+        enable: true,
+        speakerCountMin: 1,
+        speakerCountMax,
+      },
     };
     clovaFormData.append("params", JSON.stringify(params));
 
