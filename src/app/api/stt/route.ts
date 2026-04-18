@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const attendeeCount = parseInt(attendeeCountRaw ?? "", 10);
     const speakerCountMax =
       Number.isFinite(attendeeCount) && attendeeCount > 0
-        ? attendeeCount + 1
+        ? Math.min(attendeeCount + 1, 10)
         : 10;
 
     const params = {
