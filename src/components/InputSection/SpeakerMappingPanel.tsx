@@ -11,6 +11,7 @@ type SpeakerRow = {
   originalSpeakers: string[];
   count: number;
   currentName: string;
+  absorbedRawKeys: string[]; // rawClovaKey values absorbed via auto-merge
 };
 
 interface Props {
@@ -61,9 +62,21 @@ export default function SpeakerMappingPanel({
 
   const rows: SpeakerRow[] = useMemo(() => {
     const stats = getSpeakerStats(segments);
+
+    // Per-originalSpeaker absorbed raw keys (rawClovaKey differing from originalSpeaker)
+    const absorbedByKey = new Map<string, Set<string>>();
+    for (const s of segments) {
+      if (s.rawClovaKey && s.rawClovaKey !== s.originalSpeaker) {
+        const set = absorbedByKey.get(s.originalSpeaker) ?? new Set<string>();
+        set.add(s.rawClovaKey);
+        absorbedByKey.set(s.originalSpeaker, set);
+      }
+    }
+
     const merged: SpeakerRow[] = [];
     for (const s of stats) {
       const name = (mapping[s.originalSpeaker] || "").trim();
+      const absorbed = Array.from(absorbedByKey.get(s.originalSpeaker) ?? []);
       if (name) {
         const existing = merged.find(
           (m) => m.currentName === name && m.currentName !== ""
@@ -72,6 +85,10 @@ export default function SpeakerMappingPanel({
           existing.originalSpeakers.push(s.originalSpeaker);
           existing.count += s.count;
           existing.globalIndex = Math.min(existing.globalIndex, s.globalIndex);
+          for (const k of absorbed) {
+            if (!existing.absorbedRawKeys.includes(k))
+              existing.absorbedRawKeys.push(k);
+          }
           continue;
         }
       }
@@ -80,6 +97,7 @@ export default function SpeakerMappingPanel({
         originalSpeakers: [s.originalSpeaker],
         count: s.count,
         currentName: name,
+        absorbedRawKeys: absorbed,
       });
     }
     merged.sort((a, b) => a.globalIndex - b.globalIndex);
@@ -166,6 +184,14 @@ interface RowProps {
   onAddAttendee: (name: string) => void;
 }
 
+function formatAbsorbed(rawKeys: string[]): string {
+  const parts = rawKeys.map((k) => {
+    const [seq, label] = k.split(":");
+    return `청크 ${seq} 화자 ${label}`;
+  });
+  return `${parts.join(", ")}로부터 자동 병합됨`;
+}
+
 function SpeakerRowView({
   row,
   attendeeOptions,
@@ -200,9 +226,24 @@ function SpeakerRowView({
       ? `화자 ${row.globalIndex}·병합`
       : `화자 ${row.globalIndex}`;
 
+  const autoMergedCount = row.absorbedRawKeys.length;
+  const absorbedTitle =
+    autoMergedCount > 0 ? formatAbsorbed(row.absorbedRawKeys) : undefined;
+
   return (
     <div className={styles.row} role="group" aria-label={`${label}의 실제 이름`}>
-      <div className={styles.rowLabel}>{label}</div>
+      <div className={styles.rowLabel}>
+        {label}
+        {autoMergedCount > 0 && (
+          <span
+            className={styles.autoBadge}
+            title={absorbedTitle}
+            aria-label={`자동 병합 ${autoMergedCount}개. ${absorbedTitle}`}
+          >
+            자동 병합 {autoMergedCount}개
+          </span>
+        )}
+      </div>
       {mode === "select" ? (
         <select
           className={styles.select}
