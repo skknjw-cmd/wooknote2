@@ -21,10 +21,12 @@ Root cause attribution (evidence-based, from code review):
 
 ## 2. Goals
 
-1. Cap Clova's per-call `speakerCountMax` using the meeting's known attendee count.
-2. Silently merge speakers across chunk boundaries when continuity is high-confidence.
-3. Suggest (not silently apply) merges when total speaker count clearly exceeds attendee count.
+1. Cap Clova's per-call `speakerCountMax` using the meeting's known attendee count (reduces intra-chunk over-split from the engine side).
+2. Silently merge the specific case of "a single speaker mechanically cut at a 2-minute boundary" with high-confidence heuristics (short gap + non-terminated utterance).
+3. Detect and suggest intra-chunk over-splits — where Clova, within a single API call, rendered one person as multiple speaker labels — and offer a safe within-chunk merge.
 4. Preserve Clova's raw labels so the user can undo any automatic merging.
+
+**Explicit non-goal:** globally collapsing the "N chunks × K labels" namespacing into N canonical speakers. Cross-chunk speaker identity cannot be resolved heuristically without voice embeddings; doing so from counts and timing alone creates catastrophic false-merge failures (e.g., a dominant speaker absorbing quieter participants). That reduction is left as a manual UX task.
 
 ## 3. Non-Goals
 
@@ -42,10 +44,10 @@ Three independent improvements, layered:
 | # | Improvement | Trigger | UX |
 |---|---|---|---|
 | 1 | Dynamic `speakerCountMax` | Every `/api/stt` call | Invisible |
-| 2 | Silent chunk-boundary merge (Signal #2) | After each new chunk's STT result | Row collapses automatically; badge on merged rows |
-| 3 | Excess-speaker suggestion card (Signal #1) | After recording stops, if detected > attendees+1 | Card at top of `SpeakerMappingPanel` with `[자동 병합 적용]` / `[무시]` |
+| 2 | Silent chunk-boundary merge (Signal #2) | After each new chunk's STT result; gap < 500 ms AND last utterance non-terminated | Row collapses automatically; badge + tooltip on merged rows |
+| 3 | Intra-chunk over-split suggestion card (Signal #1) | After recording stops, for each chunk where detected speakers > attendeeCount | Card at top of `SpeakerMappingPanel` listing per-chunk merge candidates with `[자동 병합 적용]` / `[무시]` |
 
-All three are additive. Each can ship independently but they compose.
+All three are additive. Each can ship independently but they compose. Note: Signal #1 only ever proposes intra-chunk merges (proposals always have matching `sequenceId` on `from` and `to`); cross-chunk identity is never inferred.
 
 ---
 
@@ -156,12 +158,19 @@ export function computeBoundaryMerge(segments: Segment[]): Segment[];
    - `firstSeg` = segment with min `start` in sequenceId N+1.
    - Skip if either missing `start` or `end`, or if they share `originalSpeaker`.
    - Compute `gap = firstSeg.start - lastSeg.end`.
-   - **If `gap < 1500` ms:** rewrite every segment in sequenceId N+1 whose `originalSpeaker === firstSeg.originalSpeaker` to have `originalSpeaker = lastSeg.originalSpeaker`. Leave `rawClovaKey` untouched.
-4. Chain propagation: the function clones the input array once, then all rewrites happen on the clone. Because subsequent iterations see the already-rewritten `originalSpeaker` when they look up N+1's "last speaker," chains like `1:1` → `2:2` → `3:3` (all gaps < 1500 ms) collapse to `1:1` across the whole chain. The input `segments` array is never mutated; the function returns the cloned-and-modified array.
+   - Let `endsWithTerminator = /[.?!。？！]\s*$/.test(lastSeg.text.trim())` — tests whether the prior speaker's utterance ended with a sentence-terminating punctuation mark (ASCII `.` `?` `!` or CJK fullwidth `。` `？` `！`).
+   - **If `gap < 500` ms AND `!endsWithTerminator`:** rewrite every segment in sequenceId N+1 whose `originalSpeaker === firstSeg.originalSpeaker` to have `originalSpeaker = lastSeg.originalSpeaker`. Leave `rawClovaKey` untouched.
+4. Chain propagation: the function clones the input array once, then all rewrites happen on the clone. Because subsequent iterations see the already-rewritten `originalSpeaker` when they look up N+1's "last speaker," chains like `1:1` → `2:2` → `3:3` (all gaps < 500 ms, all without terminators) collapse to `1:1` across the whole chain. The input `segments` array is never mutated; the function returns the cloned-and-modified array.
 
-### Threshold rationale
+### Threshold & terminator rationale
 
-**1500 ms.** MediaRecorder stop/start gap is tens of ms; Clova processes each file independently, so boundary effects add a few hundred ms. A real speaker turn-taking pause is usually ≥ 1.5 s in Korean meeting contexts. Tunable constant (name: `BOUNDARY_MERGE_GAP_MS`) so we can adjust from field data.
+**500 ms** (was 1500 ms — revised per review). In Korean meetings, turn-taking 맞장구 ("네", "맞아요") can land with gaps as short as 300–800 ms. The purpose of this heuristic is narrower than "detect pauses": it specifically catches "one speaker was mid-utterance when the 2-minute timer mechanically cut the audio." That case produces near-zero gap (just MediaRecorder stop/start overhead plus Clova boundary processing — low hundreds of ms). 500 ms leaves headroom for that overhead while avoiding most genuine speaker handoffs.
+
+**Sentence-terminator check** adds a second safety layer. If `lastSeg.text` ends with `.`, `?`, `!`, `。`, `？`, or `！`, the prior speaker finished a sentence — this is highly unlikely to be a mid-utterance cut. Skip the merge. Caveat: Clova's Korean STT does not always emit punctuation; when absent, this degrades to the timing-only check (which is the conservative direction — we don't add spurious merges, we just miss some legitimate ones, which the user can resolve via manual mapping).
+
+Tunables (named constants in `speakerMerge.ts`):
+- `BOUNDARY_MERGE_GAP_MS = 500`
+- `SENTENCE_TERMINATORS = /[.?!。？！]\s*$/`
 
 ### Invocation point
 
@@ -183,16 +192,25 @@ No session gate — `computeBoundaryMerge` runs on every emit. Since it only rew
 
 Add `src/lib/speakerMerge.test.ts` with cases:
 
-1. Two chunks, gap 500 ms, different speakers → merge to chunk 1's label.
-2. Two chunks, gap 2000 ms → no merge.
-3. Three chunks with chain `1:1` | `2:2 → 1:1` | `3:3 → 1:1` — all gaps small.
-4. `start`/`end` missing in one chunk → pair skipped.
-5. Failed chunk (only `${seq}:?` segment) → no merge across that boundary.
-6. Same originalSpeaker across boundary → no change.
+1. Two chunks, gap 100 ms, no terminator, different speakers → merge to chunk 1's label.
+2. Two chunks, gap 100 ms, `lastSeg.text` ends with `.` → **no merge** (terminator check).
+3. Two chunks, gap 100 ms, `lastSeg.text` ends with `?` or `!` → no merge.
+4. Two chunks, gap 900 ms, no terminator → no merge (over threshold).
+5. Three chunks with chain `1:1` → `2:2 → 1:1` → `3:3 → 1:1` — all gaps < 500 ms and no terminators.
+6. `start`/`end` missing in one chunk → pair skipped.
+7. Failed chunk (only `${seq}:?` segment) → no merge across that boundary.
+8. Same originalSpeaker across boundary → no change.
+9. CJK fullwidth terminator (e.g., `다。` or `요？`) → no merge.
 
 ---
 
 ## 8. Section 4 — Excess-Speaker Suggestion Card (Signal #1)
+
+### Critical scope revision
+
+An earlier draft proposed a **global** Top-N selection (pick the `attendeeCount` most-frequent speakers across all chunks, merge everything else into them). That approach is fundamentally unsafe: in a meeting where one person (chair, presenter) dominates, their per-chunk keys (e.g., `1:1`, `2:1`, `3:1`) can occupy every Top-N slot. Less-frequent speakers (other attendees) get classified as "excess" and merged into the dominant speaker by time-adjacency — turning a multi-person dialogue into a false monologue.
+
+Cross-chunk speaker identity cannot be resolved from utterance counts and timing alone without voice embeddings. Solving the full "45 rows → 3 rows" problem is an ML task out of scope here. This signal's job is narrower: **defend against Clova's within-chunk over-split**, where Clova splits one person into multiple speaker labels within a single API call (typically triggered by tone/volume shifts). That is a localized problem with a safe localized fix.
 
 ### New file: `src/lib/speakerMerge.ts` (same file, additional export)
 
@@ -204,22 +222,30 @@ export function proposeExcessMerge(
 ): MergeProposal[];
 ```
 
-### Algorithm
+### Algorithm (per-chunk local merge)
 
 1. If `attendeeCount <= 0` → return `[]`.
-2. Compute per-`originalSpeaker` stats: utterance count + time-sorted segment list.
-3. If total distinct speakers ≤ `attendeeCount` → return `[]`.
-4. Sort speakers by utterance count desc:
-   - `major` = top `attendeeCount`
-   - `excess` = the rest
-5. For each `E` in `excess`:
-   - For each segment `s` in `E`, find the nearest `major` segment in time: `min over m in major of min over s' in m of |s.start - s'.start|`.
-   - Aggregate by `major`: sum of per-segment "minimum distance to *this* major speaker".
-   - Pick the `major` with the smallest aggregate distance.
-   - Tie-breaker: higher utterance count wins.
-   - Append `{ from: E.key, to: chosenMajor.key }`.
-6. If any excess segment lacks `start` → fall back to most-frequent major as target for that entire `E`.
-7. Return array.
+2. Group `segments` by `sequenceId` (i.e., one bucket per Clova API call).
+3. For each chunk bucket:
+   a. Compute `speakersInChunk` = distinct `originalSpeaker` values in this chunk, each with its utterance count (within this chunk only) and time-sorted segment list.
+   b. If `speakersInChunk.length <= attendeeCount` → skip this chunk (no over-split to defend against).
+   c. Sort `speakersInChunk` by utterance count desc (within-chunk count, **not** global).
+      - `chunkMajor` = top `attendeeCount` speakers in this chunk.
+      - `chunkExcess` = remaining speakers in this chunk.
+   d. For each `E` in `chunkExcess`:
+      - For each segment `s` in `E`, find the nearest segment (by `|s.start - s'.start|`) among `chunkMajor` speakers **within this same chunk**.
+      - Aggregate by candidate major `M`: sum of per-segment min distance to any `M` segment.
+      - Pick the `M` with the smallest aggregate distance.
+      - Tie-breaker: higher within-chunk utterance count wins.
+      - Append `{ from: E.originalSpeaker, to: chosenM.originalSpeaker }`.
+      - If `E` has any segment lacking `start` → fall back to the most-frequent chunk-major as target for the whole of `E`.
+4. Return the aggregated proposal array across all chunks.
+
+### Safety invariants
+
+- **All proposals are intra-chunk**: `from` and `to` always share the same `sequenceId` prefix. A proposal like `{from: "3:4", to: "1:1"}` is structurally impossible from this algorithm.
+- **Dominant-speaker trap is eliminated**: each chunk evaluates its own Top-N in isolation, so person A dominating globally does not push person B into the excess bucket in chunks where B spoke.
+- **Worst-case outcome** when the heuristic is still wrong: a Clova over-split that was NOT fixed, or (rare) an intra-chunk misrouting within a single 2-min window. The user sees the card, can ignore it, and the underlying data is unchanged. Applied merges are reversible via global undo.
 
 ### Invocation
 
@@ -239,18 +265,20 @@ Source of `isRecording` / `isTranscribing`: `InputTabs` already owns both; add a
 
 Placement: after the onboarding banner, before the first speaker row.
 
-Content:
+Content (per-chunk framing reflects the revised algorithm):
 
 ```
-⚠  감지된 화자가 참석자 수(N명)를 초과합니다 (M명 감지)
-   다음 K명은 주요 화자의 오분리일 가능성이 높습니다:
-     • 화자 4 (발화 2회) → 화자 1로 병합
-     • 화자 5 (발화 1회) → 화자 2로 병합
+⚠  일부 청크에서 참석자 수(N명)를 초과하는 화자가 감지되었습니다.
+   Clova가 동일 인물을 여러 화자로 쪼갠 경우일 수 있습니다.
+
+   청크별 병합 후보 (K건):
+     • 청크 2: 화자 4 (발화 1회) → 화자 2 (같은 청크)
+     • 청크 3: 화자 5 (발화 2회) → 화자 1 (같은 청크)
      ...
    [ 자동 병합 적용 ]   [ 무시 ]
 ```
 
-Display labels use `SpeakerRow.globalIndex` mapping (via `getSpeakerStats`), not raw keys.
+Display labels use `SpeakerRow.globalIndex` mapping (via `getSpeakerStats`), so raw `from`/`to` keys are rendered as human-friendly "화자 N" labels. The "청크 N" prefix comes from the `sequenceId` embedded in each proposal's `from` key.
 
 ### Actions
 
@@ -267,11 +295,13 @@ Display labels use `SpeakerRow.globalIndex` mapping (via `getSpeakerStats`), not
 Add to `src/lib/speakerMerge.test.ts`:
 
 1. `attendeeCount = 0` → empty proposals.
-2. Speakers ≤ attendeeCount → empty.
-3. 5 speakers, attendeeCount 3 → 2 proposals, targeting nearest-in-time major.
-4. Excess with all timing present → adjacency wins over frequency.
-5. Excess with no timing → falls back to top-frequency major.
-6. Tie on distance → higher-frequency major wins.
+2. Every chunk has ≤ attendeeCount distinct speakers → empty (no over-split anywhere).
+3. One chunk with 4 speakers, attendeeCount 2 → 2 proposals, both with matching `sequenceId` on `from` and `to` (intra-chunk safety invariant).
+4. Two chunks each over-split → proposals from both, each staying intra-chunk.
+5. Dominant-speaker scenario (the original failure mode): person A has keys `1:1`, `2:1`, `3:1` (dominant globally), person B has `1:2`, `2:2`, `3:2`; each chunk has exactly 2 distinct speakers and `attendeeCount = 2` → **no proposals** (regression guard against the global-top-N trap).
+6. Chunk excess with full timing → adjacency wins over frequency (chose closer-in-time major even if less frequent).
+7. Chunk excess with all timing missing → falls back to highest-frequency chunk-major.
+8. Tie on distance → higher within-chunk utterance count wins.
 
 ---
 
@@ -281,11 +311,12 @@ Add to `src/lib/speakerMerge.test.ts`:
 
 In `SpeakerRowView` ([SpeakerMappingPanel.tsx:160–251](../../src/components/InputSection/SpeakerMappingPanel.tsx#L160-L251)):
 
-- For each row, count distinct `rawClovaKey` values among segments where `rawClovaKey && rawClovaKey !== originalSpeaker`. Call this `autoMergedCount`.
+- For each row, collect the set `absorbedKeys` = distinct `rawClovaKey` values among this row's segments where `rawClovaKey && rawClovaKey !== originalSpeaker`. Let `autoMergedCount = absorbedKeys.size`.
   - This filter intentionally distinguishes auto-merge (`originalSpeaker` was rewritten) from user-driven merges (user mapped two different `originalSpeaker` keys to the same display name — those rows keep `rawClovaKey === originalSpeaker` and should not show the badge).
 - If `autoMergedCount > 0`: render a small badge next to the label: `[자동 병합 N개]`.
-- Style: `background: #e0e7ff; color: #3730a3; font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 4px;`.
-- `aria-label="자동 병합 N개"`.
+- **Hover tooltip** on the badge (native `title` attribute): format `absorbedKeys` as human-readable labels separated by `, `. Each raw key `"${seq}:${label}"` renders as `"청크 ${seq} 화자 ${label}"`. Example: `title="청크 2 화자 3, 청크 3 화자 1로부터 자동 병합됨"`. This lets the user judge the merge's plausibility before deciding whether to keep or undo.
+- Style: `background: #e0e7ff; color: #3730a3; font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 4px; cursor: help;`.
+- `aria-label="자동 병합 N개. 청크 2 화자 3, 청크 3 화자 1로부터 병합됨"` (same content as tooltip, for screen readers).
 
 Compute inside the existing `rows` `useMemo` in `SpeakerMappingPanel`. The panel already receives `segments` so no new prop is needed for this.
 
@@ -345,15 +376,19 @@ Minimal additions:
 
 | Risk | Mitigation |
 |---|---|
-| 1500 ms threshold too aggressive → wrongly merges genuine speaker handoffs at boundaries | Global undo restores raw state. Threshold is a single tunable constant — easy to tighten to 500 ms if field data shows false merges. |
-| Threshold too conservative → doesn't catch real continuities | Excess-speaker suggestion card catches the residual case. |
+| 500 ms threshold still too aggressive → merges genuine rapid-turn handoffs at chunk boundaries | Sentence-terminator check provides a second gate. Global undo restores raw state for the whole session. Threshold is a single tunable constant for field adjustment. |
+| Clova emits no punctuation on Korean speech → terminator check becomes a no-op | Degrades to timing-only check at 500 ms, which is already conservative. Failure mode is benign (missed merges, not wrong merges). |
 | `speakerCountMax = attendees + 1` too tight, forcing Clova to collapse real distinct speakers | "+1" buffer, and `speakerCountMin: 1` prevents under-detection. If attendees empty, falls back to `10`. |
-| Suggestion card's nearest-in-time heuristic misroutes excess speakers | User can ignore the card (manual mapping still works); worst case = no change. |
+| Suggestion card routes the wrong intra-chunk speaker into a major | Intra-chunk scope caps blast radius to a single 2-min window. User can ignore the card, or apply and then undo globally. |
 | Storage backward compatibility | `rawClovaKey` is optional → old v2 meetings load fine; auto-merge simply doesn't show badges / undo affordance for them. |
 
 ## 12. Success Criteria
 
-- A 30-minute recording with 3 real speakers yields ≤ ~8 rows (down from up to 45) in `SpeakerMappingPanel` before the user maps anything.
-- Users with attendees CSV filled experience fewer over-counted speakers in a single chunk (effect of Section 1).
-- When auto-merge misfires, user can fully recover via one click + confirm.
+- Users with attendees CSV filled see fewer over-counted speakers per chunk (effect of Section 1 tightening Clova's `speakerCountMax`).
+- When a speaker's utterance is mechanically cut at a 2-min chunk boundary, the resulting two rows collapse automatically in the common case (effect of Section 3, gap < 500 ms + non-terminated).
+- When Clova over-splits a single person within one chunk, the user is notified and can apply a safe intra-chunk merge with one click (effect of Section 4).
+- No proposal generated by Section 4 ever crosses chunk boundaries (safety invariant — enforced in tests).
+- When any auto-merge misfires, user can fully recover via one click + confirm, and each merged row exposes a tooltip showing exactly which raw keys were absorbed.
 - Zero regression in file-upload and direct-text paths.
+
+Explicit non-criterion: the UI may still show many rows for long meetings (one set per chunk). This is expected — cross-chunk identity is left to the user. The improvement is correctness and transparency of the merges that are made, not volume reduction.
