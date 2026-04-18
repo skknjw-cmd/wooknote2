@@ -56,3 +56,94 @@ export function computeBoundaryMerge(segments: Segment[]): Segment[] {
 
   return out;
 }
+
+export type MergeProposal = { from: string; to: string };
+
+/**
+ * Proposes intra-chunk merges for chunks where Clova over-split speakers
+ * (more distinct speakers within one chunk than attendeeCount). All proposals
+ * stay within a single chunk — never merges across chunks.
+ * Pure: never mutates the input.
+ */
+export function proposeExcessMerge(
+  segments: Segment[],
+  attendeeCount: number
+): MergeProposal[] {
+  if (attendeeCount <= 0) return [];
+
+  const byChunk = new Map<number, Segment[]>();
+  for (const s of segments) {
+    const bucket = byChunk.get(s.sequenceId);
+    if (bucket) bucket.push(s);
+    else byChunk.set(s.sequenceId, [s]);
+  }
+
+  const proposals: MergeProposal[] = [];
+
+  for (const chunkSegments of byChunk.values()) {
+    const counts = new Map<string, number>();
+    const segsByKey = new Map<string, Segment[]>();
+    for (const s of chunkSegments) {
+      counts.set(s.originalSpeaker, (counts.get(s.originalSpeaker) ?? 0) + 1);
+      const arr = segsByKey.get(s.originalSpeaker);
+      if (arr) arr.push(s);
+      else segsByKey.set(s.originalSpeaker, [s]);
+    }
+
+    const distinctKeys = Array.from(counts.keys());
+    if (distinctKeys.length <= attendeeCount) continue;
+
+    const sorted = distinctKeys
+      .map((k) => ({ key: k, count: counts.get(k)! }))
+      .sort((a, b) => b.count - a.count);
+
+    const major = sorted.slice(0, attendeeCount);
+    const excess = sorted.slice(attendeeCount);
+
+    for (const E of excess) {
+      const eSegs = segsByKey.get(E.key)!;
+      const anyMissingTiming = eSegs.some((s) => typeof s.start !== "number");
+
+      if (anyMissingTiming) {
+        proposals.push({ from: E.key, to: major[0].key });
+        continue;
+      }
+
+      let bestM: { key: string; count: number } | null = null;
+      let bestDistance = Infinity;
+
+      for (const M of major) {
+        const mStarts = (segsByKey.get(M.key) ?? [])
+          .map((s) => s.start)
+          .filter((x): x is number => typeof x === "number");
+        if (mStarts.length === 0) continue;
+
+        let aggregate = 0;
+        for (const s of eSegs) {
+          const sStart = s.start as number;
+          let minDist = Infinity;
+          for (const ms of mStarts) {
+            const d = Math.abs(sStart - ms);
+            if (d < minDist) minDist = d;
+          }
+          aggregate += minDist;
+        }
+
+        if (aggregate < bestDistance) {
+          bestDistance = aggregate;
+          bestM = M;
+        } else if (
+          aggregate === bestDistance &&
+          bestM &&
+          M.count > bestM.count
+        ) {
+          bestM = M;
+        }
+      }
+
+      proposals.push({ from: E.key, to: bestM ? bestM.key : major[0].key });
+    }
+  }
+
+  return proposals;
+}
