@@ -189,7 +189,11 @@ export default function TranscriptEditor({
         mapping={workingMapping}
         attendeesCsv={attendeesCsv}
         defaultCollapsed={unresolvedNames.length === 0}
+        isRecording={false}
+        isTranscribing={false}
         onChange={handleMappingChange}
+        onApplyExcessMerge={() => {}}
+        onGlobalUndo={() => {}}
       />
 
       <SegmentOverrideList

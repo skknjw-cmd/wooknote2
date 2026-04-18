@@ -329,8 +329,12 @@ export default function Home() {
               segments={inputData.segments ?? []}
               mapping={inputData.mapping ?? {}}
               attendeesCsv={meetingInfo.attendees}
+              isRecording={recorderStatus.isRecording}
+              isTranscribing={recorderStatus.isTranscribing}
               onChange={handleMappingChange}
               onAttendeeAdd={handleAttendeeAdd}
+              onApplyExcessMerge={handleApplyExcessMerge}
+              onGlobalUndo={handleGlobalUndo}
             />
           )}
           <button

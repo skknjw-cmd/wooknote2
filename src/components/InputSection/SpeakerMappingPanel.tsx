@@ -2,6 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 import styles from "./SpeakerMappingPanel.module.css";
 import type { Segment, SpeakerMapping } from "@/types/meeting";
 import { getSpeakerStats, parseAttendees } from "@/lib/speakerMapping";
+import { proposeExcessMerge, type MergeProposal } from "@/lib/speakerMerge";
 
 const ONBOARDING_KEY = "wooks_onboarding_speaker";
 
@@ -18,8 +19,12 @@ interface Props {
   attendeesCsv: string;
   defaultCollapsed?: boolean;
   disabled?: boolean;
+  isRecording: boolean;
+  isTranscribing: boolean;
   onChange: (mapping: SpeakerMapping) => void;
   onAttendeeAdd?: (name: string) => void;
+  onApplyExcessMerge: (proposals: MergeProposal[]) => void;
+  onGlobalUndo: () => void;
 }
 
 export default function SpeakerMappingPanel({
@@ -28,8 +33,12 @@ export default function SpeakerMappingPanel({
   attendeesCsv,
   defaultCollapsed = true,
   disabled = false,
+  isRecording,
+  isTranscribing,
   onChange,
   onAttendeeAdd,
+  onApplyExcessMerge,
+  onGlobalUndo,
 }: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [onboardingDismissed, setOnboardingDismissed] = useState(true);
