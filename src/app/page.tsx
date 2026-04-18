@@ -13,28 +13,34 @@ import { saveMeetingResult } from "@/lib/meetingStorage";
 import type { InputData, SpeakerMapping } from "@/types/meeting";
 import type { MergeProposal } from "@/lib/speakerMerge";
 
+const DEFAULT_ANALYSIS_OPTIONS: readonly string[] = [
+  "핵심요약",
+  "참석자 분석",
+  "아젠다별 요약",
+  "주요 결정 사항",
+  "To-Do List",
+  "리스크/이슈",
+  "진행계획",
+  "배경 및 목적",
+  "미결정사항",
+];
+
+const makeInitialMeetingInfo = () => ({
+  title: "",
+  date: new Date().toISOString().split("T")[0],
+  location: "",
+  attendees: "",
+});
+
 export default function Home() {
   const router = useRouter();
 
   const [showSettings, setShowSettings] = useState(false);
 
-  const [meetingInfo, setMeetingInfo] = useState({
-    title: "",
-    date: new Date().toISOString().split("T")[0],
-    location: "",
-    attendees: "",
-  });
+  const [meetingInfo, setMeetingInfo] = useState(makeInitialMeetingInfo);
 
   const [selectedOptions, setSelectedOptions] = useState<string[]>([
-    "핵심요약",
-    "참석자 분석",
-    "아젠다별 요약",
-    "주요 결정 사항",
-    "To-Do List",
-    "리스크/이슈",
-    "진행계획",
-    "배경 및 목적",
-    "미결정사항",
+    ...DEFAULT_ANALYSIS_OPTIONS,
   ]);
 
   const [inputData, setInputData] = useState<InputData>({
@@ -65,6 +71,19 @@ export default function Home() {
 
   const handleMappingChange = (next: SpeakerMapping) => {
     setInputData((prev) => ({ ...prev, mapping: next }));
+  };
+
+  const handleReset = () => {
+    if (!window.confirm("모든 내용이 초기화됩니다. 계속할까요?")) return;
+    setMeetingInfo(makeInitialMeetingInfo());
+    setSelectedOptions([...DEFAULT_ANALYSIS_OPTIONS]);
+    setInputData({ type: "text", content: "" });
+    setAddedAttendeeChips([]);
+    try {
+      localStorage.removeItem("wooks_temp_input");
+    } catch (e) {
+      console.error("Reset: failed to clear temp storage", e);
+    }
   };
 
   const handleApplyExcessMerge = (proposals: MergeProposal[]) => {
@@ -248,13 +267,27 @@ export default function Home() {
             <h1 className={styles.title}>WOOK&apos;S 회의록</h1>
             <p className={styles.subtitle}>회의록 자동요약 및 작성</p>
           </div>
-          <button
-            className={styles.settingsBtn}
-            onClick={() => setShowSettings(true)}
-            title="사용자 API 설정"
-          >
-            ⚙️
-          </button>
+          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <button
+              className={styles.resetBtn}
+              onClick={handleReset}
+              disabled={
+                isGenerating ||
+                recorderStatus.isRecording ||
+                recorderStatus.isTranscribing
+              }
+              title="회의 정보, 분석 옵션, 입력 내용을 모두 초기화합니다 (저장된 회의록과 API 설정은 유지)"
+            >
+              새로 시작
+            </button>
+            <button
+              className={styles.settingsBtn}
+              onClick={() => setShowSettings(true)}
+              title="사용자 API 설정"
+            >
+              ⚙️
+            </button>
+          </div>
         </div>
       </header>
 
