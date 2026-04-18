@@ -55,6 +55,15 @@ export default function SpeakerMappingPanel({
     setOnboardingDismissed(true);
   };
 
+  const [suggestionState, setSuggestionState] = useState<
+    "visible" | "dismissed" | "applied"
+  >("visible");
+
+  // Reset when a new recording starts (segments cleared)
+  useEffect(() => {
+    if (segments.length === 0) setSuggestionState("visible");
+  }, [segments.length]);
+
   const attendeeOptions = useMemo(
     () => parseAttendees(attendeesCsv),
     [attendeesCsv]
@@ -106,6 +115,17 @@ export default function SpeakerMappingPanel({
 
   const speakerCount = rows.length;
 
+  const hasAutoMerged = useMemo(
+    () =>
+      segments.some(
+        (s) => s.rawClovaKey && s.rawClovaKey !== s.originalSpeaker
+      ),
+    [segments]
+  );
+
+  const canShowUndo =
+    hasAutoMerged && !isRecording && !isTranscribing && !disabled;
+
   if (segments.length === 0) return null;
 
   return (
@@ -127,6 +147,22 @@ export default function SpeakerMappingPanel({
           화자 이름 지정
           <span className={styles.badge}>{speakerCount}명 감지됨</span>
         </h3>
+        {canShowUndo && (
+          <button
+            type="button"
+            className={styles.undoButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm("모든 자동 병합을 취소하시겠습니까?")) {
+                onGlobalUndo();
+                setSuggestionState("dismissed");
+              }
+            }}
+            aria-label="자동 병합 전체 취소"
+          >
+            자동 병합 전체 취소
+          </button>
+        )}
         <span className={styles.chevron}>{collapsed ? "▾" : "▴"}</span>
       </div>
 

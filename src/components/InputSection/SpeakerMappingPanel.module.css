@@ -150,3 +150,19 @@
   cursor: help;
   vertical-align: middle;
 }
+
+.undoButton {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  min-height: 32px;
+}
+
+.undoButton:hover {
+  color: #b91c1c;
+  background: #fef2f2;
+}
