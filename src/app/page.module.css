@@ -84,3 +84,28 @@
 .settingsBtn:hover {
   background-color: var(--bg-tertiary);
 }
+
+.resetBtn {
+  font-size: 0.85rem;
+  background: none;
+  border: 1px solid var(--bg-tertiary);
+  cursor: pointer;
+  padding: 0.5rem 0.85rem;
+  border-radius: 6px;
+  transition: background-color 0.2s ease, color 0.2s ease,
+    border-color 0.2s ease;
+  color: var(--text-secondary);
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.resetBtn:hover:not(:disabled) {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.resetBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
