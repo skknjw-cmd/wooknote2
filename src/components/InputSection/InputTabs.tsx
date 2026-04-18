@@ -10,9 +10,18 @@ interface Props {
   value: InputData;
   attendeesCsv: string;
   onChange: (val: InputData) => void;
+  onStatusChange?: (status: {
+    isRecording: boolean;
+    isTranscribing: boolean;
+  }) => void;
 }
 
-export default function InputTabs({ value, attendeesCsv, onChange }: Props) {
+export default function InputTabs({
+  value,
+  attendeesCsv,
+  onChange,
+  onStatusChange,
+}: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -38,6 +47,15 @@ export default function InputTabs({ value, attendeesCsv, onChange }: Props) {
   useEffect(() => {
     onChangeRef.current = onChange;
   });
+
+  const onStatusChangeRef = useRef(onStatusChange);
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  });
+
+  useEffect(() => {
+    onStatusChangeRef.current?.({ isRecording, isTranscribing });
+  }, [isRecording, isTranscribing]);
 
   const cleanupStream = () => {
     if (streamRef.current) {

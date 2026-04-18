@@ -43,6 +43,10 @@ export default function Home() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [addedAttendeeChips, setAddedAttendeeChips] = useState<string[]>([]);
+  const [recorderStatus, setRecorderStatus] = useState({
+    isRecording: false,
+    isTranscribing: false,
+  });
 
   useEffect(() => {
     const saved = localStorage.getItem("wooks_temp_input");
@@ -291,6 +295,7 @@ export default function Home() {
             value={inputData}
             attendeesCsv={meetingInfo.attendees}
             onChange={setInputData}
+            onStatusChange={setRecorderStatus}
           />
           {hasSegments && (
             <SpeakerMappingPanel
