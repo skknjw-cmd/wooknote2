@@ -192,7 +192,6 @@ export default function TranscriptEditor({
         isRecording={false}
         isTranscribing={false}
         onChange={handleMappingChange}
-        onApplyExcessMerge={() => {}}
         onGlobalUndo={() => {}}
       />
 

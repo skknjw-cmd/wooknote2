@@ -147,3 +147,78 @@ export function proposeExcessMerge(
 
   return proposals;
 }
+
+/**
+ * Applies a list of MergeProposals to segments by renaming originalSpeaker.
+ * Pure: never mutates the input.
+ */
+export function applyMergeProposals(
+  segments: Segment[],
+  proposals: MergeProposal[]
+): Segment[] {
+  if (proposals.length === 0) return segments.slice();
+  const rename = new Map(proposals.map((p) => [p.from, p.to]));
+  return segments.map((s) => {
+    const to = rename.get(s.originalSpeaker);
+    return to ? { ...s, originalSpeaker: to } : { ...s };
+  });
+}
+
+/**
+ * Cross-chunk speaker matching by first-appearance order.
+ *
+ * For each consecutive chunk pair (N → N+1), maps chunk N+1's j-th speaker
+ * (by earliest start time) to chunk N's j-th speaker. Renames originalSpeaker
+ * only — rawClovaKey is never touched, preserving undo capability.
+ *
+ * Chains correctly: after N→N+1 merge, chunk N+1 carries chunk N's keys,
+ * which become the reference when processing N+1→N+2.
+ *
+ * Pure: never mutates the input.
+ */
+export function computeCrossChunkMerge(segments: Segment[]): Segment[] {
+  if (segments.length < 2) return segments.slice();
+
+  const out: Segment[] = segments.map((s) => ({ ...s }));
+
+  const byChunk = new Map<number, Segment[]>();
+  for (const s of out) {
+    const bucket = byChunk.get(s.sequenceId);
+    if (bucket) bucket.push(s);
+    else byChunk.set(s.sequenceId, [s]);
+  }
+
+  const sequenceIds = Array.from(byChunk.keys()).sort((a, b) => a - b);
+
+  for (let i = 0; i + 1 < sequenceIds.length; i++) {
+    const chunkN = byChunk.get(sequenceIds[i])!;
+    const chunkM = byChunk.get(sequenceIds[i + 1])!;
+
+    const nOrder = getSpeakersOrderedByEarliestStart(chunkN);
+    const mOrder = getSpeakersOrderedByEarliestStart(chunkM);
+
+    const limit = Math.min(nOrder.length, mOrder.length);
+    for (let j = 0; j < limit; j++) {
+      const fromKey = mOrder[j];
+      const toKey = nOrder[j];
+      if (fromKey === toKey) continue;
+      for (const s of chunkM) {
+        if (s.originalSpeaker === fromKey) s.originalSpeaker = toKey;
+      }
+    }
+  }
+
+  return out;
+}
+
+function getSpeakersOrderedByEarliestStart(segs: Segment[]): string[] {
+  const earliest = new Map<string, number>();
+  for (const s of segs) {
+    if (typeof s.start !== "number") continue;
+    const prev = earliest.get(s.originalSpeaker);
+    if (prev === undefined || s.start < prev) earliest.set(s.originalSpeaker, s.start);
+  }
+  return Array.from(earliest.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(([k]) => k);
+}

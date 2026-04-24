@@ -2,7 +2,6 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 import styles from "./SpeakerMappingPanel.module.css";
 import type { Segment, SpeakerMapping } from "@/types/meeting";
 import { getSpeakerStats, parseAttendees } from "@/lib/speakerMapping";
-import { proposeExcessMerge, type MergeProposal } from "@/lib/speakerMerge";
 
 const ONBOARDING_KEY = "wooks_onboarding_speaker";
 
@@ -24,7 +23,6 @@ interface Props {
   isTranscribing: boolean;
   onChange: (mapping: SpeakerMapping) => void;
   onAttendeeAdd?: (name: string) => void;
-  onApplyExcessMerge: (proposals: MergeProposal[]) => void;
   onGlobalUndo: () => void;
 }
 
@@ -38,7 +36,6 @@ export default function SpeakerMappingPanel({
   isTranscribing,
   onChange,
   onAttendeeAdd,
-  onApplyExcessMerge,
   onGlobalUndo,
 }: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -54,15 +51,6 @@ export default function SpeakerMappingPanel({
     localStorage.setItem(ONBOARDING_KEY, "done");
     setOnboardingDismissed(true);
   };
-
-  const [suggestionState, setSuggestionState] = useState<
-    "visible" | "dismissed" | "applied"
-  >("visible");
-
-  // Reset when a new recording starts (segments cleared)
-  useEffect(() => {
-    if (segments.length === 0) setSuggestionState("visible");
-  }, [segments.length]);
 
   const attendeeOptions = useMemo(
     () => parseAttendees(attendeesCsv),
@@ -126,42 +114,6 @@ export default function SpeakerMappingPanel({
   const canShowUndo =
     hasAutoMerged && !isRecording && !isTranscribing && !disabled;
 
-  const attendeeCount = useMemo(
-    () => parseAttendees(attendeesCsv).length,
-    [attendeesCsv]
-  );
-
-  const proposals = useMemo(
-    () => proposeExcessMerge(segments, attendeeCount),
-    [segments, attendeeCount]
-  );
-
-  const showSuggestCard =
-    suggestionState === "visible" &&
-    !isRecording &&
-    !isTranscribing &&
-    !disabled &&
-    proposals.length > 0;
-
-  // Map originalSpeaker key -> "화자 N" label via getSpeakerStats globalIndex
-  const labelByKey = useMemo(() => {
-    const stats = getSpeakerStats(segments);
-    const map = new Map<string, string>();
-    for (const s of stats) {
-      map.set(s.originalSpeaker, `화자 ${s.globalIndex}`);
-    }
-    return map;
-  }, [segments]);
-
-  // Per-key utterance count (across all chunks — used for "발화 N회" display)
-  const countByKey = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const s of segments) {
-      m.set(s.originalSpeaker, (m.get(s.originalSpeaker) ?? 0) + 1);
-    }
-    return m;
-  }, [segments]);
-
   if (segments.length === 0) return null;
 
   return (
@@ -191,7 +143,6 @@ export default function SpeakerMappingPanel({
               e.stopPropagation();
               if (window.confirm("모든 자동 병합을 취소하시겠습니까?")) {
                 onGlobalUndo();
-                setSuggestionState("dismissed");
               }
             }}
             aria-label="자동 병합 전체 취소"
@@ -218,47 +169,6 @@ export default function SpeakerMappingPanel({
               >
                 ×
               </button>
-            </div>
-          )}
-
-          {showSuggestCard && (
-            <div className={styles.suggestCard} role="note">
-              <div>
-                ⚠ 일부 청크에서 참석자 수({attendeeCount}명)를 초과하는 화자가 감지되었습니다.
-                Clova가 동일 인물을 여러 화자로 쪼갠 경우일 수 있습니다.
-              </div>
-              <ul style={{ margin: "0.5rem 0 0.75rem 1.2rem", padding: 0 }}>
-                {proposals.map((p) => {
-                  const fromLabel = labelByKey.get(p.from) ?? p.from;
-                  const toLabel = labelByKey.get(p.to) ?? p.to;
-                  const seq = p.from.split(":")[0];
-                  const count = countByKey.get(p.from) ?? 0;
-                  return (
-                    <li key={`${p.from}->${p.to}`} style={{ margin: "0.15rem 0" }}>
-                      청크 {seq}: {fromLabel} (발화 {count}회) → {toLabel} (같은 청크)
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className={styles.suggestCardActions}>
-                <button
-                  type="button"
-                  className={styles.suggestApply}
-                  onClick={() => {
-                    onApplyExcessMerge(proposals);
-                    setSuggestionState("applied");
-                  }}
-                >
-                  자동 병합 적용
-                </button>
-                <button
-                  type="button"
-                  className={styles.suggestDismiss}
-                  onClick={() => setSuggestionState("dismissed")}
-                >
-                  무시
-                </button>
-              </div>
             </div>
           )}
 

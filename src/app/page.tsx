@@ -11,7 +11,6 @@ import SpeakerMappingPanel from "@/components/InputSection/SpeakerMappingPanel";
 import { resolveSegments } from "@/lib/speakerMapping";
 import { saveMeetingResult } from "@/lib/meetingStorage";
 import type { InputData, SpeakerMapping } from "@/types/meeting";
-import type { MergeProposal } from "@/lib/speakerMerge";
 
 const DEFAULT_ANALYSIS_OPTIONS: readonly string[] = [
   "핵심요약",
@@ -84,19 +83,6 @@ export default function Home() {
     } catch (e) {
       console.error("Reset: failed to clear temp storage", e);
     }
-  };
-
-  const handleApplyExcessMerge = (proposals: MergeProposal[]) => {
-    setInputData((prev) => {
-      const segs = prev.segments ?? [];
-      if (segs.length === 0 || proposals.length === 0) return prev;
-      const rename = new Map(proposals.map((p) => [p.from, p.to]));
-      const nextSegs = segs.map((s) => {
-        const to = rename.get(s.originalSpeaker);
-        return to ? { ...s, originalSpeaker: to } : s;
-      });
-      return { ...prev, segments: nextSegs };
-    });
   };
 
   const handleGlobalUndo = () => {
@@ -366,7 +352,6 @@ export default function Home() {
               isTranscribing={recorderStatus.isTranscribing}
               onChange={handleMappingChange}
               onAttendeeAdd={handleAttendeeAdd}
-              onApplyExcessMerge={handleApplyExcessMerge}
               onGlobalUndo={handleGlobalUndo}
             />
           )}

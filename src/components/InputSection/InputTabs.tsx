@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from "react";
 import styles from "./InputTabs.module.css";
 import type { Segment, InputData } from "@/types/meeting";
 import { resolveSegments, parseAttendees } from "@/lib/speakerMapping";
-import { computeBoundaryMerge } from "@/lib/speakerMerge";
+import { computeCrossChunkMerge, proposeExcessMerge, applyMergeProposals } from "@/lib/speakerMerge";
 
 const SEGMENT_DURATION_MS = 2 * 60 * 1000;
 
@@ -106,12 +106,20 @@ export default function InputTabs({
     const rawSegments = Array.from(segmentsMapRef.current.entries())
       .sort(([a], [b]) => a - b)
       .flatMap(([, segs]) => segs);
-    const mergedSegments = computeBoundaryMerge(rawSegments);
-    const content = resolveSegments(mergedSegments, {});
+    const crossChunkMerged = computeCrossChunkMerge(rawSegments);
+    const attendeeCount = parseAttendees(attendeesCsv).length;
+    const finalSegments =
+      attendeeCount > 0
+        ? applyMergeProposals(
+            crossChunkMerged,
+            proposeExcessMerge(crossChunkMerged, attendeeCount)
+          )
+        : crossChunkMerged;
+    const content = resolveSegments(finalSegments, {});
     onChangeRef.current({
       type: "record",
       content,
-      segments: mergedSegments,
+      segments: finalSegments,
     });
   };
 

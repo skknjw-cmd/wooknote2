@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeBoundaryMerge } from "./speakerMerge";
+import { computeBoundaryMerge, computeCrossChunkMerge, applyMergeProposals } from "./speakerMerge";
 import type { Segment } from "@/types/meeting";
 
 const seg = (
@@ -245,5 +245,142 @@ describe("proposeExcessMerge", () => {
     const before = JSON.stringify(segs);
     proposeExcessMerge(segs, 2);
     expect(JSON.stringify(segs)).toBe(before);
+  });
+});
+
+describe("applyMergeProposals", () => {
+  it("renames originalSpeaker for matched keys", () => {
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 100),
+      seg(2, 1, "1:2", "b", 100, 200),
+      seg(3, 2, "2:1", "c", 200, 300),
+    ];
+    const result = applyMergeProposals(segs, [{ from: "2:1", to: "1:1" }]);
+    expect(result[0].originalSpeaker).toBe("1:1");
+    expect(result[1].originalSpeaker).toBe("1:2");
+    expect(result[2].originalSpeaker).toBe("1:1");
+  });
+
+  it("never modifies rawClovaKey", () => {
+    const segs = [seg(1, 2, "2:1", "x", 0, 100)];
+    const result = applyMergeProposals(segs, [{ from: "2:1", to: "1:1" }]);
+    expect(result[0].rawClovaKey).toBe("2:1");
+  });
+
+  it("does not mutate the input", () => {
+    const segs = [seg(1, 1, "1:1", "a", 0, 100)];
+    const before = JSON.stringify(segs);
+    applyMergeProposals(segs, [{ from: "1:1", to: "99:99" }]);
+    expect(JSON.stringify(segs)).toBe(before);
+  });
+
+  it("is a no-op when proposals is empty", () => {
+    const segs = [seg(1, 1, "1:1", "a", 0, 100)];
+    const result = applyMergeProposals(segs, []);
+    expect(result[0].originalSpeaker).toBe("1:1");
+  });
+
+  it("leaves non-matched keys unchanged", () => {
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 100),
+      seg(2, 1, "1:3", "b", 100, 200),
+    ];
+    const result = applyMergeProposals(segs, [{ from: "1:2", to: "1:1" }]);
+    expect(result[0].originalSpeaker).toBe("1:1");
+    expect(result[1].originalSpeaker).toBe("1:3");
+  });
+});
+
+describe("computeCrossChunkMerge", () => {
+  it("maps chunk 2 speakers to chunk 1 by first-appearance order", () => {
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 90),
+      seg(2, 1, "1:2", "b", 100, 190),
+      seg(3, 2, "2:1", "c", 200, 290),
+      seg(4, 2, "2:2", "d", 300, 390),
+    ];
+    const result = computeCrossChunkMerge(segs);
+    expect(result[2].originalSpeaker).toBe("1:1");
+    expect(result[3].originalSpeaker).toBe("1:2");
+  });
+
+  it("renames ALL segments with a matched key, not just the first", () => {
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 90),
+      seg(2, 2, "2:1", "b", 200, 290),
+      seg(3, 2, "2:1", "c", 300, 390),
+    ];
+    const result = computeCrossChunkMerge(segs);
+    expect(result[1].originalSpeaker).toBe("1:1");
+    expect(result[2].originalSpeaker).toBe("1:1");
+  });
+
+  it("chains correctly across three chunks", () => {
+    // chunk 2: 2:2 first (200), 2:1 second (300) — reversed order
+    // after 1→2: 2:2→1:1, 2:1→1:2
+    // after 2→3: 3:1→1:1, 3:2→1:2
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 90),
+      seg(2, 1, "1:2", "b", 100, 190),
+      seg(3, 2, "2:2", "c", 200, 290),
+      seg(4, 2, "2:1", "d", 300, 390),
+      seg(5, 3, "3:1", "e", 400, 490),
+      seg(6, 3, "3:2", "f", 500, 590),
+    ];
+    const result = computeCrossChunkMerge(segs);
+    expect(result[2].originalSpeaker).toBe("1:1");
+    expect(result[3].originalSpeaker).toBe("1:2");
+    expect(result[4].originalSpeaker).toBe("1:1");
+    expect(result[5].originalSpeaker).toBe("1:2");
+  });
+
+  it("skips speakers with no timing data", () => {
+    const segs = [
+      seg(1, 1, "1:?", "[실패]"),
+      seg(2, 2, "2:?", "[실패]"),
+    ];
+    const result = computeCrossChunkMerge(segs);
+    expect(result[1].originalSpeaker).toBe("2:?");
+  });
+
+  it("leaves extra chunk N+1 speakers unchanged when chunk N has fewer", () => {
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 100),
+      seg(2, 2, "2:1", "b", 200, 300),
+      seg(3, 2, "2:2", "c", 300, 400),
+    ];
+    const result = computeCrossChunkMerge(segs);
+    expect(result[1].originalSpeaker).toBe("1:1");
+    expect(result[2].originalSpeaker).toBe("2:2");
+  });
+
+  it("never modifies rawClovaKey", () => {
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 100),
+      seg(2, 2, "2:1", "b", 200, 300),
+    ];
+    const result = computeCrossChunkMerge(segs);
+    expect(result[1].rawClovaKey).toBe("2:1");
+    expect(result[1].originalSpeaker).toBe("1:1");
+  });
+
+  it("does not mutate the input", () => {
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 100),
+      seg(2, 2, "2:1", "b", 200, 300),
+    ];
+    const before = JSON.stringify(segs);
+    computeCrossChunkMerge(segs);
+    expect(JSON.stringify(segs)).toBe(before);
+  });
+
+  it("returns unchanged array for a single chunk", () => {
+    const segs = [
+      seg(1, 1, "1:1", "a", 0, 100),
+      seg(2, 1, "1:2", "b", 100, 200),
+    ];
+    const result = computeCrossChunkMerge(segs);
+    expect(result[0].originalSpeaker).toBe("1:1");
+    expect(result[1].originalSpeaker).toBe("1:2");
   });
 });
