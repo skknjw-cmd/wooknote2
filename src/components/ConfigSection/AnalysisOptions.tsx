@@ -5,7 +5,6 @@ import styles from "./AnalysisOptions.module.css";
 
 const OPTIONS = [
   "핵심요약",
-  "참석자 분석",
   "아젠다별 요약",
   "주요 결정 사항",
   "To-Do List",

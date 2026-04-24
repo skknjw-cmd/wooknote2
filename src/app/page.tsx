@@ -14,7 +14,6 @@ import type { InputData, SpeakerMapping } from "@/types/meeting";
 
 const DEFAULT_ANALYSIS_OPTIONS: readonly string[] = [
   "핵심요약",
-  "참석자 분석",
   "아젠다별 요약",
   "주요 결정 사항",
   "To-Do List",
