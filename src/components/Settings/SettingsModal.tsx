@@ -11,16 +11,12 @@ export type UserSettings = {
   geminiKey: string;
   clovaInvokeUrl: string;
   clovaSecretKey: string;
-  notionToken: string;
-  notionDbId: string;
 };
 
 export const DEFAULT_SETTINGS: UserSettings = {
   geminiKey: "",
   clovaInvokeUrl: "",
   clovaSecretKey: "",
-  notionToken: "",
-  notionDbId: "",
 };
 
 export default function SettingsModal({ isOpen, onClose }: Props) {
@@ -87,27 +83,6 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
             />
           </div>
 
-          <hr className={styles.divider} />
-
-          <div className={styles.group}>
-            <label>Notion Integration Token</label>
-            <input 
-              type="password" 
-              value={settings.notionToken}
-              onChange={(e) => setSettings({...settings, notionToken: e.target.value})}
-              placeholder="secret_..."
-            />
-          </div>
-
-          <div className={styles.group}>
-            <label>Notion Database ID</label>
-            <input 
-              type="text" 
-              value={settings.notionDbId}
-              onChange={(e) => setSettings({...settings, notionDbId: e.target.value})}
-              placeholder="32자리 데이터베이스 ID"
-            />
-          </div>
         </div>
 
         <footer className={styles.footer}>

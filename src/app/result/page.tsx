@@ -14,6 +14,7 @@ import {
   loadMeetingResult,
   saveMeetingResult,
 } from "@/lib/meetingStorage";
+import { generateMeetingMd, generateFileName } from "@/lib/wikiSave";
 import type {
   SavedMeetingResultV2,
   AnalysisResult,
@@ -27,7 +28,8 @@ export default function ResultPage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const [isWordGenerating, setIsWordGenerating] = useState(false);
-  const [isNotionSaving, setIsNotionSaving] = useState(false);
+  const [wikiDirHandle, setWikiDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [wikiSaveStatus, setWikiSaveStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -357,44 +359,41 @@ export default function ResultPage() {
     }
   };
 
-  const handleExportNotion = async () => {
-    if (!result || !savedResult) return;
-    setIsNotionSaving(true);
+  const handleWikiSave = async () => {
+    if (!savedResult) return;
+    if (!("showDirectoryPicker" in window)) {
+      alert("이 브라우저는 폴더 저장을 지원하지 않습니다. Chrome 또는 Edge를 사용해주세요.");
+      return;
+    }
+    setWikiSaveStatus("saving");
     try {
-      const savedSettings = localStorage.getItem("wooks_settings");
-      const settings = savedSettings ? JSON.parse(savedSettings) : {};
-
-      const customHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (settings.notionToken)
-        customHeaders["x-notion-token"] = settings.notionToken;
-      if (settings.notionDbId)
-        customHeaders["x-notion-db-id"] = settings.notionDbId;
-
-      const notionPayload = {
-        ...result,
-        location: savedResult.meetingInfo.location,
-      };
-
-      const res = await fetch("/api/notion", {
-        method: "POST",
-        headers: customHeaders,
-        body: JSON.stringify(notionPayload),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        alert("Notion에 성공적으로 전송되었습니다.");
-      } else {
-        throw new Error(data.error || "Notion 전송에 실패했습니다.");
+      let dirHandle = wikiDirHandle;
+      if (!dirHandle) {
+        dirHandle = await (window as Window & typeof globalThis & { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
+        setWikiDirHandle(dirHandle);
       }
+      const subDir = await dirHandle.getDirectoryHandle("회의록", { create: true });
+      const mdContent = generateMeetingMd(savedResult);
+      const fileName = generateFileName(
+        savedResult.analysis.title || savedResult.meetingInfo.title,
+        savedResult.analysis.date || savedResult.meetingInfo.date
+      );
+      const fileHandle = await subDir.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(mdContent);
+      await writable.close();
+      setWikiSaveStatus("done");
+      setTimeout(() => setWikiSaveStatus("idle"), 3000);
     } catch (error: unknown) {
-      console.error("Notion Export Error:", error);
+      if (error instanceof Error && error.name === "AbortError") {
+        setWikiSaveStatus("idle");
+        return;
+      }
+      console.error("Wiki Save Error:", error);
+      setWikiSaveStatus("error");
       const msg = error instanceof Error ? error.message : "unknown";
-      alert(`노션 전송 실패: ${msg}`);
-    } finally {
-      setIsNotionSaving(false);
+      alert(`위키 저장 실패: ${msg}`);
+      setTimeout(() => setWikiSaveStatus("idle"), 2000);
     }
   };
 
@@ -439,10 +438,11 @@ export default function ResultPage() {
         <ExportTools
           onExportPDF={handleExportPDF}
           onExportWord={handleExportWord}
-          onExportNotion={handleExportNotion}
+          onWikiSave={handleWikiSave}
           isPdfGenerating={isPdfGenerating}
           isWordGenerating={isWordGenerating}
-          isNotionSaving={isNotionSaving}
+          wikiSaveStatus={wikiSaveStatus}
+          hasWikiDir={wikiDirHandle !== null}
         />
       </header>
 

@@ -36,11 +36,12 @@
   background-color: var(--accent-hover);
 }
 
-.btnNotion {
-  background-color: #000;
+.btnWiki {
+  background-color: #4f46e5;
   color: #fff;
+  border: none;
 }
 
-.btnNotion:hover {
-  opacity: 0.8;
+.btnWiki:hover:not(:disabled) {
+  background-color: #4338ca;
 }
