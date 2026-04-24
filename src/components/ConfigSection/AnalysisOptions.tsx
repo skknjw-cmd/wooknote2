@@ -5,12 +5,12 @@ import styles from "./AnalysisOptions.module.css";
 
 const OPTIONS = [
   "핵심요약",
+  "주요 논의 내용",
   "아젠다별 요약",
   "주요 결정 사항",
   "To-Do List",
   "리스크/이슈",
-  "진행계획",
-  "배경 및 목적",
+  "향후 일정",
   "미결정사항",
 ];
 
