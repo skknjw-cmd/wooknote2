@@ -227,8 +227,8 @@ export default function InputTabs({
   const startSegment = (stream: MediaStream) => {
     const mimeType = getSupportedMimeType();
     const mediaRecorder = mimeType
-      ? new MediaRecorder(stream, { mimeType })
-      : new MediaRecorder(stream);
+      ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 })
+      : new MediaRecorder(stream, { audioBitsPerSecond: 32000 });
     mediaRecorderRef.current = mediaRecorder;
     chunksRef.current = [];
 
