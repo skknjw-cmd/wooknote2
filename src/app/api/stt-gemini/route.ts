@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     for (const modelName of MODEL_CHAIN) {
       try {
         const model = genAI.getGenerativeModel(
-          { model: modelName, generationConfig: { temperature: 0.1, maxOutputTokens: 1024 } },
+          { model: modelName, generationConfig: { temperature: 0.1, maxOutputTokens: 3072 } },
           { apiVersion: "v1" }
         );
         const result = await model.generateContent([
