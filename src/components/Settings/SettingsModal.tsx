@@ -9,14 +9,10 @@ interface Props {
 
 export type UserSettings = {
   geminiKey: string;
-  clovaInvokeUrl: string;
-  clovaSecretKey: string;
 };
 
 export const DEFAULT_SETTINGS: UserSettings = {
   geminiKey: "",
-  clovaInvokeUrl: "",
-  clovaSecretKey: "",
 };
 
 export default function SettingsModal({ isOpen, onClose }: Props) {
@@ -55,31 +51,11 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
 
           <div className={styles.group}>
             <label>Google Gemini API Key</label>
-            <input 
-              type="password" 
+            <input
+              type="password"
               value={settings.geminiKey}
-              onChange={(e) => setSettings({...settings, geminiKey: e.target.value})}
-              placeholder="AI 분석용 API 키"
-            />
-          </div>
-
-          <div className={styles.group}>
-            <label>Clova Speech Invoke URL</label>
-            <input 
-              type="text" 
-              value={settings.clovaInvokeUrl}
-              onChange={(e) => setSettings({...settings, clovaInvokeUrl: e.target.value})}
-              placeholder="https://clovaspeech-gw.ncloud.com/external/v1/..."
-            />
-          </div>
-
-          <div className={styles.group}>
-            <label>Clova Speech Secret Key</label>
-            <input 
-              type="password" 
-              value={settings.clovaSecretKey}
-              onChange={(e) => setSettings({...settings, clovaSecretKey: e.target.value})}
-              placeholder="음성 변환용 Secret Key"
+              onChange={(e) => setSettings({ ...settings, geminiKey: e.target.value })}
+              placeholder="음성 변환 및 AI 분석에 사용됩니다"
             />
           </div>
 

@@ -1,0 +1,73 @@
+.wrapper {
+  width: 100%;
+  margin-top: 1.5rem;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background-color: var(--bg-secondary);
+  padding: 0.75rem 1rem;
+  gap: 1rem;
+}
+
+.badge {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+}
+
+.badge[data-provider="clova"] {
+  background-color: #e8f4e8;
+  color: #2d6a2d;
+}
+
+.badge[data-provider="gemini"] {
+  background-color: #e8edf8;
+  color: #2d4a8a;
+}
+
+.chunkRow {
+  border-top: 1px solid var(--bg-tertiary);
+  padding: 1rem;
+}
+
+.seqLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.col {
+  min-width: 0;
+}
+
+.text {
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  padding: 0.75rem;
+  min-height: 60px;
+}
+
+.loading {
+  color: var(--text-secondary);
+  font-style: italic;
+}

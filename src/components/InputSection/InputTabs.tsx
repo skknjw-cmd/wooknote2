@@ -2,9 +2,9 @@ import React, { useRef, useState, useEffect } from "react";
 import styles from "./InputTabs.module.css";
 import type { Segment, InputData } from "@/types/meeting";
 import { resolveSegments, parseAttendees } from "@/lib/speakerMapping";
-import { computeCrossChunkMerge, proposeExcessMerge, applyMergeProposals } from "@/lib/speakerMerge";
+import { proposeExcessMerge, applyMergeProposals } from "@/lib/speakerMerge";
 
-const SEGMENT_DURATION_MS = 2 * 60 * 1000;
+const SEGMENT_DURATION_MS = 5 * 60 * 1000;
 
 interface Props {
   value: InputData;
@@ -86,12 +86,11 @@ export default function InputTabs({
     onChange({ type, content: type === "text" ? "" : null });
   };
 
-  const getClovaHeaders = (): Record<string, string> => {
+  const getGeminiHeaders = (): Record<string, string> => {
     const saved = localStorage.getItem("wooks_settings");
     const settings = saved ? JSON.parse(saved) : {};
     const headers: Record<string, string> = {};
-    if (settings.clovaInvokeUrl) headers["x-clova-url"] = settings.clovaInvokeUrl;
-    if (settings.clovaSecretKey) headers["x-clova-key"] = settings.clovaSecretKey;
+    if (settings.geminiKey) headers["x-gemini-key"] = settings.geminiKey;
     const count = parseAttendees(attendeesCsv).length;
     if (count > 0) headers["x-attendee-count"] = String(count);
     return headers;
@@ -106,15 +105,14 @@ export default function InputTabs({
     const rawSegments = Array.from(segmentsMapRef.current.entries())
       .sort(([a], [b]) => a - b)
       .flatMap(([, segs]) => segs);
-    const crossChunkMerged = computeCrossChunkMerge(rawSegments);
     const attendeeCount = parseAttendees(attendeesCsv).length;
     const finalSegments =
       attendeeCount > 0
         ? applyMergeProposals(
-            crossChunkMerged,
-            proposeExcessMerge(crossChunkMerged, attendeeCount)
+            rawSegments,
+            proposeExcessMerge(rawSegments, attendeeCount)
           )
-        : crossChunkMerged;
+        : rawSegments;
     const content = resolveSegments(finalSegments, {});
     onChangeRef.current({
       type: "record",
@@ -154,10 +152,10 @@ export default function InputTabs({
       formData.append("media", blob);
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 50000);
-      const res = await fetch("/api/stt", {
+      const timeout = setTimeout(() => controller.abort(), 55000);
+      const res = await fetch("/api/stt-gemini", {
         method: "POST",
-        headers: getClovaHeaders(),
+        headers: getGeminiHeaders(),
         body: formData,
         signal: controller.signal,
       });
@@ -175,26 +173,16 @@ export default function InputTabs({
       }
 
       const data = await res.json();
-      const incoming: Array<{
-        clovaLabel: string;
-        text: string;
-        start?: number;
-        end?: number;
-      }> = Array.isArray(data.segments) ? data.segments : [];
+      const incoming: Array<{ clovaLabel: string; text: string }> =
+        Array.isArray(data.segments) ? data.segments : [];
 
-      const newSegments: Segment[] = incoming.map((s) => {
-        const key = `${sequenceId}:${s.clovaLabel}`;
-        return {
-          id: nextSegmentId(),
-          sequenceId,
-          originalSpeaker: key,
-          rawClovaKey: key,
-          text: s.text,
-          start:
-            typeof s.start === "number" ? offsetBase + s.start : undefined,
-          end: typeof s.end === "number" ? offsetBase + s.end : undefined,
-        };
-      });
+      const newSegments: Segment[] = incoming.map((s) => ({
+        id: nextSegmentId(),
+        sequenceId,
+        originalSpeaker: s.clovaLabel,
+        rawClovaKey: `${sequenceId}:${s.clovaLabel}`,
+        text: s.text,
+      }));
 
       segmentsMapRef.current.set(sequenceId, newSegments);
       emitAllSegments();
@@ -403,7 +391,7 @@ export default function InputTabs({
   } else if (isRecording && isTranscribing) {
     statusMsg = `녹음 중... (구간 ${segmentCount} / 이전 구간 변환 중)`;
   } else if (isRecording) {
-    statusMsg = `녹음 중... (구간 ${segmentCount} / 2분마다 자동 분할)`;
+    statusMsg = `녹음 중... (구간 ${segmentCount} / 5분마다 자동 분할)`;
   } else if (isTranscribing) {
     statusMsg = "마지막 구간 텍스트 변환 중...";
   } else if (typeof value.content === "string" && value.content) {
@@ -528,6 +516,7 @@ export default function InputTabs({
                 />
               </div>
             )}
+
           </div>
         )}
       </div>
