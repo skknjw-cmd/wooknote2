@@ -4,7 +4,7 @@ import type { Segment, InputData } from "@/types/meeting";
 import { resolveSegments, parseAttendees } from "@/lib/speakerMapping";
 import { proposeExcessMerge, applyMergeProposals } from "@/lib/speakerMerge";
 
-const SEGMENT_DURATION_MS = 5 * 60 * 1000;
+const SEGMENT_DURATION_MS = 3 * 60 * 1000;
 
 interface Props {
   value: InputData;
@@ -391,7 +391,7 @@ export default function InputTabs({
   } else if (isRecording && isTranscribing) {
     statusMsg = `녹음 중... (구간 ${segmentCount} / 이전 구간 변환 중)`;
   } else if (isRecording) {
-    statusMsg = `녹음 중... (구간 ${segmentCount} / 5분마다 자동 분할)`;
+    statusMsg = `녹음 중... (구간 ${segmentCount} / 3분마다 자동 분할)`;
   } else if (isTranscribing) {
     statusMsg = "마지막 구간 텍스트 변환 중...";
   } else if (typeof value.content === "string" && value.content) {
