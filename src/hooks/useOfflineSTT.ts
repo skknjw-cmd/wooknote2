@@ -7,7 +7,7 @@ import { apiKeyHeader } from "@/lib/apiKey";
 type ModelStatus = "idle" | "loading" | "ready";
 
 // 30-second recording chunks → POST to /api/stt-gemini → Gemini 2.5 Flash STT + diarization
-const CHUNK_MS = 8 * 1000;
+const CHUNK_MS = 15 * 1000;
 
 interface STTState {
   modelStatus: ModelStatus;
