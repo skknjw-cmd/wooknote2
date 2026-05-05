@@ -9,15 +9,15 @@ interface RecordingBarProps {
 }
 
 export default function RecordingBar({ isRecording, elapsedMs, onToggle }: RecordingBarProps) {
-  const [bars, setBars] = useState<number[]>(Array(28).fill(3));
+  const [bars, setBars] = useState<number[]>(Array(32).fill(3));
 
   useEffect(() => {
     if (!isRecording) return;
     const id = setInterval(() => {
       setBars((prev) =>
-        prev.map(() => isRecording ? 3 + Math.random() * 16 : 3)
+        prev.map(() => 2 + Math.random() * 18)
       );
-    }, 120);
+    }, 100);
     return () => clearInterval(id);
   }, [isRecording]);
 
@@ -33,23 +33,44 @@ export default function RecordingBar({ isRecording, elapsedMs, onToggle }: Recor
 
   return (
     <div className="tr-rec">
-      <button
-        className="rb"
-        onClick={onToggle}
-        title={isRecording ? "녹음 중지" : "녹음 시작"}
-        style={{ background: isRecording ? "var(--rec)" : "var(--ink)" }}
-      />
+      {/* REC 인디케이터 */}
+      {isRecording && (
+        <div className="tr-rec-indicator">
+          <span className="tr-rec-dot" />
+          <span className="tr-rec-label">REC</span>
+        </div>
+      )}
+
+      {/* 타이머 */}
       <span className="timer">{formatTime(elapsedMs)}</span>
+
+      {/* 파형 */}
       <div className="wf">
         {bars.map((h, i) => (
           <div
             key={i}
             className={`b${isRecording ? " live" : ""}`}
-            style={{ height: h }}
+            style={{ height: isRecording ? h : 3 }}
           />
         ))}
       </div>
-      <span className="speed-mini">1x</span>
+
+      {/* 정지/시작 버튼 */}
+      <button
+        className="rb"
+        onClick={onToggle}
+        title={isRecording ? "녹음 중지" : "녹음 시작"}
+      >
+        {isRecording ? (
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="white">
+            <rect x="1" y="1" width="8" height="8" rx="1.5" />
+          </svg>
+        ) : (
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="white">
+            <polygon points="2,1 10,5.5 2,10" />
+          </svg>
+        )}
+      </button>
     </div>
   );
 }
