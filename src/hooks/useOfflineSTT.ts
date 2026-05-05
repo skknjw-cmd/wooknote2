@@ -7,7 +7,7 @@ import { apiKeyHeader } from "@/lib/apiKey";
 type ModelStatus = "idle" | "loading" | "ready";
 
 // 30-second recording chunks → POST to /api/stt-gemini → Gemini 2.5 Flash STT + diarization
-const CHUNK_MS = 15 * 1000;
+const CHUNK_MS = 30 * 1000;
 
 interface STTState {
   modelStatus: ModelStatus;
@@ -39,6 +39,7 @@ export function useOfflineSTT(): STTState {
   const elapsedMsRef = useRef(0);
   const participantsRef = useRef<Participant[]>([]);
   const segIdRef = useRef(0);
+  const prevContextRef = useRef<{ sp: number; text: string }[]>([]);
 
   function formatTime(ms: number): string {
     const s = Math.floor(ms / 1000);
@@ -51,12 +52,20 @@ export function useOfflineSTT(): STTState {
     try {
       const form = new FormData();
       form.append("media", blob);
-      const headers: Record<string, string> = {};
       if (participantsRef.current.length > 0) {
-        headers["x-attendee-count"] = String(participantsRef.current.length);
+        form.append("attendeeCount", String(participantsRef.current.length));
+        const names = participantsRef.current
+          .filter((p) => p.name)
+          .map((p) => `화자 ${p.sp}: ${p.name}`)
+          .join(", ");
+        if (names) form.append("speakerNames", names);
+      }
+      // 이전 청크 마지막 3턴을 컨텍스트로 전달 → 화자 번호 일관성 유지
+      if (prevContextRef.current.length > 0) {
+        form.append("prevContext", JSON.stringify(prevContextRef.current));
       }
 
-      const res = await fetch("/api/stt-gemini", { method: "POST", body: form, headers: { ...apiKeyHeader(), ...headers } });
+      const res = await fetch("/api/stt-gemini", { method: "POST", body: form, headers: apiKeyHeader() });
       if (!res.ok) {
         console.error("[STT] Gemini 오류:", await res.text());
         return;
@@ -67,6 +76,8 @@ export function useOfflineSTT(): STTState {
       };
       if (!segments?.length) return;
 
+      // 다음 청크를 위해 이번 청크 마지막 3턴 저장
+      const newContext: { sp: number; text: string }[] = [];
       setTurns((prev) => {
         const next = [...prev];
         for (const seg of segments) {
@@ -84,8 +95,10 @@ export function useOfflineSTT(): STTState {
             });
           }
         }
+        newContext.push(...next.slice(-3).map((t) => ({ sp: t.sp, text: t.text })));
         return next;
       });
+      prevContextRef.current = newContext;
     } catch (err) {
       console.error("[STT] 처리 실패:", err);
     }
