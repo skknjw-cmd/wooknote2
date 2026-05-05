@@ -126,6 +126,7 @@ export default function Home() {
 
   const [pendingTurnCount, setPendingTurnCount] = useState(0);
   const prevTurnsLen = useRef(0);
+  const [audioLoading, setAudioLoading] = useState(false);
 
   useEffect(() => {
     const added = stt.turns.length - prevTurnsLen.current;
@@ -275,6 +276,7 @@ export default function Home() {
 
   async function handleAudioSubmit(file: File) {
     if (!currentNote) return;
+    setAudioLoading(true);
     try {
       const form = new FormData();
       form.append("media", file);
@@ -287,10 +289,15 @@ export default function Home() {
         date: new Date().toLocaleDateString("ko-KR"),
         attendees: "미정",
       });
-      saveNote(applyAnalysis({ ...currentNote, title: file.name.replace(/\.[^.]+$/, "") }, result));
+      const updated = applyAnalysis({ ...currentNote, title: file.name.replace(/\.[^.]+$/, "") }, result);
+      saveNote(updated);
       setAppMode("review");
+      setScreen("live");
     } catch (err) {
       console.error("변환 실패:", err);
+      alert("변환 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setAudioLoading(false);
     }
   }
 
@@ -354,7 +361,7 @@ export default function Home() {
   }
 
   if (screen === "audio") {
-    return <AudioFilePanel onSubmit={handleAudioSubmit} onBack={() => setScreen("mode-select")} />;
+    return <AudioFilePanel onSubmit={handleAudioSubmit} onBack={() => setScreen("mode-select")} loading={audioLoading} />;
   }
 
   if (screen === "video") {

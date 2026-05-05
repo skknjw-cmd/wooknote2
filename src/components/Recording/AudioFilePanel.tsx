@@ -5,9 +5,10 @@ import React, { useState, useRef } from "react";
 interface AudioFilePanelProps {
   onSubmit: (file: File) => void;
   onBack?: () => void;
+  loading?: boolean;
 }
 
-export default function AudioFilePanel({ onSubmit, onBack }: AudioFilePanelProps) {
+export default function AudioFilePanel({ onSubmit, onBack, loading = false }: AudioFilePanelProps) {
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -113,10 +114,10 @@ export default function AudioFilePanel({ onSubmit, onBack }: AudioFilePanelProps
         <button className="secondary" onClick={onBack}>취소</button>
         <button
           className="primary"
-          onClick={() => file && onSubmit(file)}
-          disabled={!file}
+          onClick={() => file && !loading && onSubmit(file)}
+          disabled={!file || loading}
         >
-          트랜스크립트 생성
+          {loading ? "처리 중..." : "트랜스크립트 생성"}
         </button>
       </footer>
     </div>
