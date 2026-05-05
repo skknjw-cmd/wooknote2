@@ -152,63 +152,61 @@ export default function AppShell({
           </div>
         )}
 
-        {/* 트랜스크립트 + 토글 핸들 */}
-        <div style={{ position: "relative", display: "flex", flexShrink: 0 }}>
-          <div style={{
-            width: transcriptCollapsed ? 0 : 380,
-            overflow: "hidden",
-            transition: "width 0.2s ease",
-            flexShrink: 0,
-          }}>
-            {transcriptSlot ?? (
-              <LiveTranscript
-                turns={turns}
-                keywords={keywords}
-                participants={participants}
-                mode={mode}
-                isRecording={isRecording}
-                elapsedMs={elapsedMs}
-                onToggleRecording={onToggleRecording}
-                onSpeakerName={onSpeakerName}
-                onToggleKeyword={onToggleKeyword}
-                onEditTurn={onEditTurn}
-                onSplitTurn={onSplitTurn}
-                reviewOffset={mode === "review" ? 44 : 0}
-              />
-            )}
-          </div>
-          {/* 접기/펼치기 핸들 */}
-          <button
-            onClick={() => setTranscriptCollapsed((c) => !c)}
-            title={transcriptCollapsed ? "트랜스크립트 펼치기" : "트랜스크립트 접기"}
-            style={{
-              position: "absolute",
-              right: -12,
-              top: "50%",
-              transform: "translateY(-50%)",
-              zIndex: 20,
-              width: 20,
-              height: 48,
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--ink-4)",
-              padding: 0,
-              boxShadow: "var(--shadow-1)",
-            }}
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              {transcriptCollapsed
-                ? <><polyline points="3,2 7,5 3,8" /></>
-                : <><polyline points="7,2 3,5 7,8" /></>
-              }
-            </svg>
-          </button>
+        {/* 트랜스크립트 패널 */}
+        <div style={{
+          width: transcriptCollapsed ? 0 : 380,
+          overflow: "hidden",
+          transition: "width 0.2s ease",
+          flexShrink: 0,
+        }}>
+          {transcriptSlot ?? (
+            <LiveTranscript
+              turns={turns}
+              keywords={keywords}
+              participants={participants}
+              mode={mode}
+              isRecording={isRecording}
+              elapsedMs={elapsedMs}
+              onToggleRecording={onToggleRecording}
+              onSpeakerName={onSpeakerName}
+              onToggleKeyword={onToggleKeyword}
+              onEditTurn={onEditTurn}
+              onSplitTurn={onSplitTurn}
+              reviewOffset={mode === "review" ? 44 : 0}
+            />
+          )}
         </div>
+
+        {/* 트랜스크립트 접기/펼치기 핸들 */}
+        <button
+          onClick={() => setTranscriptCollapsed((c) => !c)}
+          title={transcriptCollapsed ? "트랜스크립트 펼치기" : "트랜스크립트 접기"}
+          style={{
+            flexShrink: 0,
+            width: 16,
+            alignSelf: "stretch",
+            background: "var(--surface-2)",
+            border: "none",
+            borderLeft: "1px solid var(--border)",
+            borderRight: "1px solid var(--border)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--ink-4)",
+            padding: 0,
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-3)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+        >
+          <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            {transcriptCollapsed
+              ? <><polyline points="2,2 6,6 2,10" /></>
+              : <><polyline points="6,2 2,6 6,10" /></>
+            }
+          </svg>
+        </button>
 
         <div
           style={{
