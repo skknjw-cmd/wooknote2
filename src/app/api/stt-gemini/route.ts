@@ -16,7 +16,7 @@ type ApiSttResponse = {
 };
 
 const MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
-const CHUNK_DURATION_S = 30; // useOfflineSTT.ts의 CHUNK_MS와 동기화
+const CHUNK_DURATION_S = 20; // useOfflineSTT.ts의 CHUNK_MS와 동기화
 
 function buildPrompt(
   attendeeCount?: number,
