@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import type { TurnSegment, Participant } from "@/types/meeting";
+import { apiKeyHeader } from "@/lib/apiKey";
 
 type ModelStatus = "idle" | "loading" | "ready";
 
@@ -55,7 +56,7 @@ export function useOfflineSTT(): STTState {
         headers["x-attendee-count"] = String(participantsRef.current.length);
       }
 
-      const res = await fetch("/api/stt-gemini", { method: "POST", body: form, headers });
+      const res = await fetch("/api/stt-gemini", { method: "POST", body: form, headers: { ...apiKeyHeader(), ...headers } });
       if (!res.ok) {
         console.error("[STT] Gemini 오류:", await res.text());
         return;
