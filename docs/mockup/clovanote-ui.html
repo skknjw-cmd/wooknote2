@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoNote — ClovaNote 스타일 UI 목업</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --surface-hover: #f0f0f0;
+    --border: #e0e0e0;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666;
+    --text-muted: #999;
+    --accent: #00c471;
+    --accent-light: #e6faf3;
+    --speaker-1: #4CAF50;
+    --speaker-2: #2196F3;
+    --speaker-3: #FF9800;
+    --speaker-4: #9C27B0;
+    --recording-red: #e53935;
+    --sidebar-width: 240px;
+    --memo-width: 320px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 14px;
+  }
+
+  /* ─── TOP BAR ─── */
+  .top-bar {
+    height: 48px;
+    background: #1a1a2e;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+  .top-bar .logo {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.3px;
+  }
+  .top-bar .logo span { color: var(--accent); }
+  .top-bar .divider { width: 1px; height: 20px; background: rgba(255,255,255,0.15); margin: 0 4px; }
+  .top-bar .note-title-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 14px;
+    color: rgba(255,255,255,0.85);
+    font-weight: 500;
+  }
+  .top-bar .note-title-input::placeholder { color: rgba(255,255,255,0.4); }
+  .top-bar .top-actions { display: flex; gap: 8px; align-items: center; }
+  .top-bar .btn-icon {
+    width: 32px; height: 32px;
+    background: rgba(255,255,255,0.1);
+    border: none; border-radius: 6px;
+    color: rgba(255,255,255,0.8);
+    cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .top-bar .btn-icon:hover { background: rgba(255,255,255,0.2); }
+  .rec-status {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: rgba(255,255,255,0.7);
+  }
+  .rec-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--recording-red);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ─── MAIN SHELL ─── */
+  .app-shell {
+    flex: 1;
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr var(--memo-width);
+    overflow: hidden;
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    background: #16213e;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 16px 14px 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar-header .new-btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--accent);
+    border: none; border-radius: 8px;
+    color: #fff; font-size: 13px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    justify-content: center; transition: filter 0.15s;
+  }
+  .sidebar-header .new-btn:hover { filter: brightness(1.1); }
+  .sidebar-search {
+    padding: 0 14px 10px;
+  }
+  .sidebar-search input {
+    width: 100%;
+    padding: 7px 10px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    color: rgba(255,255,255,0.7);
+    font-size: 12px; outline: none;
+  }
+  .sidebar-search input::placeholder { color: rgba(255,255,255,0.3); }
+  .sidebar-section-label {
+    padding: 6px 14px 4px;
+    font-size: 11px; font-weight: 600;
+    color: rgba(255,255,255,0.3);
+    text-transform: uppercase; letter-spacing: 0.8px;
+  }
+  .note-list { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+  .note-item {
+    padding: 9px 14px;
+    cursor: pointer;
+    border-radius: 6px; margin: 1px 8px;
+    transition: background 0.12s;
+    position: relative;
+  }
+  .note-item:hover { background: rgba(255,255,255,0.07); }
+  .note-item.active { background: rgba(0, 196, 113, 0.15); }
+  .note-item.active::before {
+    content: '';
+    position: absolute; left: 0; top: 4px; bottom: 4px;
+    width: 3px; background: var(--accent); border-radius: 0 2px 2px 0;
+    margin-left: 8px;
+  }
+  .note-item-title {
+    font-size: 13px; font-weight: 500;
+    color: rgba(255,255,255,0.8);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .note-item.active .note-item-title { color: #fff; }
+  .note-item-meta {
+    font-size: 11px; color: rgba(255,255,255,0.35);
+    margin-top: 2px; display: flex; gap: 6px;
+  }
+  .sidebar-footer {
+    padding: 10px 14px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .sidebar-footer .settings-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px;
+    background: none; border: none;
+    color: rgba(255,255,255,0.4); font-size: 12px;
+    cursor: pointer; width: 100%; border-radius: 6px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .sidebar-footer .settings-btn:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7); }
+
+  /* ─── MAIN AREA ─── */
+  .main-area {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  /* Note meta bar */
+  .note-meta-bar {
+    padding: 12px 20px 0;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .note-meta-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--text-muted);
+    padding-bottom: 10px;
+  }
+  .note-meta-row .tag {
+    background: #f0f0f0; border-radius: 4px;
+    padding: 2px 6px; font-size: 11px;
+  }
+
+  /* Keywords */
+  .keywords-section {
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex; align-items: flex-start; gap: 8px;
+    flex-wrap: wrap;
+  }
+  .keywords-label {
+    font-size: 12px; color: var(--text-muted);
+    padding-top: 2px; white-space: nowrap;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .keywords-label svg { width: 14px; height: 14px; }
+  .keyword-tag {
+    padding: 3px 10px;
+    background: #f0f8ff;
+    border: 1px solid #c8e4f8;
+    border-radius: 12px;
+    font-size: 12px; color: #1976D2;
+    cursor: pointer; transition: background 0.12s;
+    white-space: nowrap;
+  }
+  .keyword-tag:hover { background: #dbeeff; }
+  .keyword-tag.selected { background: #1976D2; color: #fff; border-color: #1976D2; }
+
+  /* Tabs */
+  .transcript-tabs {
+    display: flex; align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    gap: 0;
+  }
+  .tab {
+    padding: 10px 16px;
+    font-size: 13px; font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab.active { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+  .tab-actions { margin-left: auto; display: flex; gap: 6px; }
+  .btn-sm {
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px; background: #fff;
+    font-size: 12px; color: var(--text-secondary);
+    cursor: pointer; transition: background 0.12s;
+  }
+  .btn-sm:hover { background: var(--surface-hover); }
+
+  /* Transcript scroll area */
+  .transcript-scroll {
+    flex: 1; overflow-y: auto;
+    padding: 16px 20px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+
+  /* Speaker bubble */
+  .speaker-turn {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 0;
+    position: relative;
+  }
+  .speaker-turn + .speaker-turn { border-top: 1px solid #f5f5f5; }
+  .speaker-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 6px;
+  }
+  .speaker-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+  }
+  .avatar-1 { background: var(--speaker-1); }
+  .avatar-2 { background: var(--speaker-2); }
+  .avatar-3 { background: var(--speaker-3); }
+  .avatar-4 { background: var(--speaker-4); }
+  .speaker-name {
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+  }
+  .speaker-time {
+    font-size: 11px; color: var(--text-muted);
+    margin-left: auto;
+    cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    transition: background 0.12s;
+  }
+  .speaker-time:hover { background: #f0f0f0; color: var(--text-secondary); }
+  .speaker-text {
+    font-size: 14px; line-height: 1.7;
+    color: var(--text-primary);
+    padding-left: 38px;
+  }
+  .speaker-text.typing::after {
+    content: '▋';
+    animation: blink 0.8s step-end infinite;
+    color: var(--accent);
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Live indicator */
+  .live-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #fff0f0; border: 1px solid #ffcdd2;
+    border-radius: 10px; padding: 2px 8px;
+    font-size: 11px; color: var(--recording-red); font-weight: 600;
+  }
+  .live-badge-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--recording-red);
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  /* ─── RECORDING BAR ─── */
+  .recording-bar {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    background: #fafafa;
+    flex-shrink: 0;
+  }
+  .rec-controls {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .rec-main-btn {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; transition: transform 0.15s, filter 0.15s;
+    flex-shrink: 0;
+  }
+  .rec-main-btn:hover { transform: scale(1.08); filter: brightness(1.1); }
+  .rec-main-btn.recording { background: var(--recording-red); color: #fff; }
+  .rec-main-btn.paused { background: #f5f5f5; border: 2px solid var(--border); }
+  .rec-main-btn.idle { background: var(--accent); color: #fff; }
+  .progress-container { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .progress-bar-wrapper {
+    position: relative; height: 4px;
+    background: var(--border); border-radius: 2px; cursor: pointer;
+  }
+  .progress-bar-fill {
+    height: 100%; border-radius: 2px;
+    background: var(--text-primary);
+    width: 35%;
+    transition: width 0.1s;
+  }
+  .progress-bar-thumb {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--text-primary);
+    left: calc(35% - 6px);
+  }
+  .rec-time-row {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--text-muted);
+  }
+  .rec-extra-btns {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .rec-extra-btns button {
+    padding: 5px 10px;
+    background: none; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 12px; color: var(--text-secondary);
+    cursor: pointer; transition: background 0.12s;
+  }
+  .rec-extra-btns button:hover { background: var(--surface-hover); }
+  .speed-btn {
+    font-weight: 600; min-width: 36px;
+    text-align: center;
+  }
+
+  /* ─── MEMO PANEL ─── */
+  .memo-panel {
+    background: #fafafa;
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .memo-panel-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .memo-panel-header .sub-tabs {
+    display: flex; gap: 0;
+  }
+  .memo-sub-tab {
+    padding: 4px 10px;
+    font-size: 12px; color: var(--text-secondary);
+    cursor: pointer; border-radius: 4px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .memo-sub-tab.active { background: var(--surface); color: var(--text-primary); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .memo-panel-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+
+  /* AI summary card */
+  .ai-summary-card {
+    background: linear-gradient(135deg, #e8f5e9 0%, #e3f2fd 100%);
+    border: 1px solid #c8e6c9;
+    border-radius: 10px; padding: 14px;
+    margin-bottom: 14px;
+  }
+  .ai-summary-card .ai-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700; color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .ai-summary-card p {
+    font-size: 13px; line-height: 1.6; color: var(--text-secondary);
+  }
+  .ai-summary-card .refresh-hint {
+    font-size: 11px; color: var(--text-muted);
+    margin-top: 8px; display: flex; align-items: center; gap: 4px;
+  }
+
+  /* Memo items */
+  .memo-add-btn {
+    width: 100%;
+    padding: 10px;
+    background: none;
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    color: var(--text-muted); font-size: 13px;
+    cursor: pointer; transition: border-color 0.15s, color 0.15s;
+    margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .memo-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .memo-item {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px;
+    font-size: 13px; line-height: 1.5;
+    color: var(--text-primary); margin-bottom: 8px;
+    position: relative;
+  }
+  .memo-item .memo-time { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+  /* Speaker mapping */
+  .speaker-map-section {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .speaker-map-title {
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+  }
+  .speaker-map-row {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  .speaker-map-avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .speaker-map-label { font-size: 13px; color: var(--text-secondary); flex: 1; }
+  .speaker-map-input {
+    padding: 4px 8px; border: 1px solid var(--border);
+    border-radius: 5px; font-size: 12px; width: 100px; outline: none;
+    transition: border-color 0.15s;
+  }
+  .speaker-map-input:focus { border-color: var(--accent); }
+
+  /* ─── MODEL LOADING OVERLAY ─── */
+  .model-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(4px);
+  }
+  .model-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 32px 40px;
+    width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  }
+  .model-card h3 {
+    font-size: 18px; font-weight: 700; margin-bottom: 6px; text-align: center;
+  }
+  .model-card .subtitle {
+    font-size: 13px; color: var(--text-secondary); text-align: center;
+    margin-bottom: 24px;
+  }
+  .model-progress-item { margin-bottom: 16px; }
+  .model-progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 13px; margin-bottom: 6px;
+    color: var(--text-secondary);
+  }
+  .model-progress-label span:last-child { color: var(--accent); font-weight: 600; }
+  .model-progress-bar {
+    height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden;
+  }
+  .model-progress-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), #00a896);
+    transition: width 0.3s ease;
+  }
+  .model-card .note {
+    font-size: 12px; color: var(--text-muted); text-align: center;
+    margin-top: 20px; line-height: 1.6;
+  }
+  .model-card .note strong { color: var(--text-secondary); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #bbb; }
+
+  /* Toggle overlay button */
+  .toggle-overlay-btn {
+    position: fixed; bottom: 20px; right: 20px;
+    padding: 10px 16px;
+    background: #1a1a2e; color: #fff;
+    border: none; border-radius: 8px;
+    font-size: 13px; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 99;
+    transition: filter 0.15s;
+  }
+  .toggle-overlay-btn:hover { filter: brightness(1.2); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════
+     MODEL LOADING OVERLAY
+══════════════════════════════ -->
+<div class="model-overlay" id="modelOverlay">
+  <div class="model-card">
+    <h3>🤖 AI 모델 초기화 중</h3>
+    <p class="subtitle">최초 1회만 다운로드합니다. 이후에는 인터넷 없이 동작합니다.</p>
+
+    <div class="model-progress-item">
+      <div class="model-progress-label">
+        <span>Whisper Base (음성 인식)</span>
+        <span id="whisperPct">58%</span>
+      </div>
+      <div class="model-progress-bar">
+        <div class="model-progress-fill" id="whisperBar" style="width:58%"></div>
+      </div>
+    </div>
+
+    <div class="model-progress-item">
+      <div class="model-progress-label">
+        <span>WeSpeaker (화자 구분)</span>
+        <span id="speakerPct">대기 중...</span>
+      </div>
+      <div class="model-progress-bar">
+        <div class="model-progress-fill" id="speakerBar" style="width:0%"></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <strong>다운로드 크기:</strong> 약 91MB<br>
+      완료 후 브라우저에 캐시되어 다음부터는 즉시 실행됩니다.
+    </p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     TOP BAR
+══════════════════════════════ -->
+<div class="top-bar">
+  <div class="logo">Auto<span>Note</span></div>
+  <div class="divider"></div>
+  <input class="note-title-input" value="2026-05-05 팀 미팅 — 생산 라인 점검" />
+  <div class="top-actions">
+    <div class="rec-status">
+      <div class="rec-dot"></div>
+      <span>35:07</span>
+    </div>
+    <button class="btn-icon" title="내보내기">⬇</button>
+    <button class="btn-icon" title="분석 생성">✨</button>
+    <button class="btn-icon" title="설정">⚙</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     APP SHELL (3-column)
+══════════════════════════════ -->
+<div class="app-shell">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <button class="new-btn">＋ 새 녹음</button>
+    </div>
+    <div class="sidebar-search">
+      <input type="text" placeholder="🔍  노트 검색...">
+    </div>
+
+    <div class="sidebar-section-label">오늘</div>
+    <div class="note-list">
+      <div class="note-item active">
+        <div class="note-item-title">팀 미팅 — 생산 라인 점검</div>
+        <div class="note-item-meta">
+          <span>오후 3:39</span>
+          <span>35분</span>
+        </div>
+      </div>
+      <div class="note-item">
+        <div class="note-item-title">Q2 예산 검토</div>
+        <div class="note-item-meta"><span>오전 10:15</span><span>22분</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section-label">어제</div>
+    <div class="note-list" style="flex:0">
+      <div class="note-item">
+        <div class="note-item-title">신제품 기획 브레인스토밍</div>
+        <div class="note-item-meta"><span>오후 2:00</span><span>48분</span></div>
+      </div>
+      <div class="note-item">
+        <div class="note-item-title">고객사 미팅 리뷰</div>
+        <div class="note-item-meta"><span>오전 11:30</span><span>18분</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section-label" style="margin-top:8px">이전</div>
+    <div class="note-list" style="flex:0">
+      <div class="note-item">
+        <div class="note-item-title">주간 팀 회의</div>
+        <div class="note-item-meta"><span>04/28</span><span>31분</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1"></div>
+    <div class="sidebar-footer">
+      <button class="settings-btn">⚙ 설정 &amp; 키 관리</button>
+    </div>
+  </div>
+
+  <!-- ── MAIN AREA ── -->
+  <div class="main-area">
+
+    <!-- Meta row -->
+    <div class="note-meta-bar">
+      <div class="note-meta-row">
+        <span>전체 노트</span>
+        <span>·</span>
+        <span>4.1수 오후 3:39 수정</span>
+        <span>·</span>
+        <span>35분 8초</span>
+        <span class="tag">4명 참석</span>
+        <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+          <span class="live-badge">
+            <span class="live-badge-dot"></span>
+            LIVE
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keywords -->
+    <div class="keywords-section">
+      <span class="keywords-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        주요 키워드
+      </span>
+      <span class="keyword-tag selected">스펀지</span>
+      <span class="keyword-tag">플랫</span>
+      <span class="keyword-tag">비축</span>
+      <span class="keyword-tag">발동</span>
+      <span class="keyword-tag">철제</span>
+      <span class="keyword-tag">수량</span>
+      <span class="keyword-tag">상한</span>
+      <span class="keyword-tag">인만</span>
+      <span class="keyword-tag">스피커</span>
+      <span class="keyword-tag">오거스타</span>
+      <span class="keyword-tag">단차</span>
+      <span class="keyword-tag">한솔</span>
+      <span class="keyword-tag">스테인레스</span>
+      <span class="keyword-tag">가격</span>
+    </div>
+
+    <!-- Tabs -->
+    <div class="transcript-tabs">
+      <div class="tab active">음성 기록</div>
+      <div class="tab">AI 요약</div>
+      <div class="tab-actions">
+        <button class="btn-sm">편집</button>
+        <button class="btn-sm">복사</button>
+      </div>
+    </div>
+
+    <!-- Transcript -->
+    <div class="transcript-scroll" id="transcriptScroll">
+
+      <div class="speaker-turn">
+        <div class="speaker-header">
+          <div class="speaker-avatar avatar-1">1</div>
+          <div class="speaker-name">화자 1</div>
+          <span class="speaker-time">00:05</span>
+        </div>
+        <div class="speaker-text">
+          아이고 괜히 뭐 그것 때문에 온 건 아니고요. 그건 그냥 짧게 걔는 어떻게 보고드렸냐면 궁금한 게 있어요. 대표님 그거 중에 60 몇 명이라고 하더라고요. 그걸로 나간 고객들이 그거는 맞는 거에요.
+        </div>
+      </div>
+
+      <div class="speaker-turn">
+        <div class="speaker-header">
+          <div class="speaker-avatar avatar-2">2</div>
+          <div class="speaker-name">화자 2</div>
+          <span class="speaker-time">00:27</span>
+        </div>
+        <div class="speaker-text">
+          정확한 수치가 안 나와 왜 그러냐면 지금 저희도 중국 공장하고 통화를 하고 있는데 애네들이 기계가 이렇게 5대가 돌고 있는데 그 옆에서 이제 보조해 주는 팀이 한 사람씩 더 있더라고요. 그 사람들이 이제 용접을 하면서 어떤 사람이 빠뜨려 보고 어떤 사람이 안 빠뜨려버린지를 모르니까 그 수치가 계산이 안 되는 거에요.
+        </div>
+      </div>
+
+      <div class="speaker-turn">
+        <div class="speaker-header">
+          <div class="speaker-avatar avatar-1">1</div>
+          <div class="speaker-name">화자 1</div>
+          <span class="speaker-time">00:48</span>
+        </div>
+        <div class="speaker-text">
+          근데 기존에는 없었는데 이번에 있었던 건 이번 것만 그렇다라고 추정을 해야 되니 이번 것만 그렇다고 가정했을 땐 언제부터 나간 거 그게 우리 애들은 13일부터 나간 거가 그렇다.
+        </div>
+      </div>
+
+      <div class="speaker-turn">
+        <div class="speaker-header">
+          <div class="speaker-avatar avatar-2">2</div>
+          <div class="speaker-name">화자 2</div>
+          <span class="speaker-time">01:03</span>
+        </div>
+        <div class="speaker-text">
+          중점적으로 마지막 파트 썼던 게 거의 3월 13일 그 무렵부터 지금 현재 쓰고 있는 문제가 생겼던 그 시기에 그거를 썼거든요.
+        </div>
+      </div>
+
+      <div class="speaker-turn">
+        <div class="speaker-header">
+          <div class="speaker-avatar avatar-1">1</div>
+          <div class="speaker-name">화자 1</div>
+          <span class="speaker-time">01:16</span>
+        </div>
+        <div class="speaker-text">3월 13일</div>
+      </div>
+
+      <div class="speaker-turn">
+        <div class="speaker-header">
+          <div class="speaker-avatar avatar-2">2</div>
+          <div class="speaker-name">화자 2</div>
+          <span class="speaker-time">01:17</span>
+        </div>
+        <div class="speaker-text">
+          네, 맞습니다. 그때부터 문제가 발생한 거고, 현재 공장 측에서는 대응 방안을 논의 중이에요. 가장 빠른 조치는 해당 라인을 일시 중단하고 전수 검사를 진행하는 건데, 이 경우 생산량에 영향이 불가피합니다.
+        </div>
+      </div>
+
+      <div class="speaker-turn">
+        <div class="speaker-header">
+          <div class="speaker-avatar avatar-3">3</div>
+          <div class="speaker-name">화자 3</div>
+          <span class="speaker-time">01:42</span>
+        </div>
+        <div class="speaker-text">
+          전수 검사를 하면 얼마나 지연이 생기는 거예요? 납기일이 이미 정해져 있는 오더가 있는데, 그거를 맞출 수 있는 건지가 걱정입니다.
+        </div>
+      </div>
+
+      <!-- LIVE — currently typing -->
+      <div class="speaker-turn">
+        <div class="speaker-header">
+          <div class="speaker-avatar avatar-2">2</div>
+          <div class="speaker-name">화자 2</div>
+          <span class="speaker-time">01:58</span>
+        </div>
+        <div class="speaker-text typing" id="liveText">
+          예상으로는 2~3일 정도 소요될 것 같고요, 납기일 기준으로 보면
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Recording Bar -->
+    <div class="recording-bar">
+      <div class="rec-controls">
+        <button class="rec-main-btn recording" title="중지">⏹</button>
+        <div class="progress-container">
+          <div class="progress-bar-wrapper">
+            <div class="progress-bar-fill" id="progressFill"></div>
+            <div class="progress-bar-thumb" id="progressThumb"></div>
+          </div>
+          <div class="rec-time-row">
+            <span id="currentTime">00:01:58</span>
+            <span>35:07</span>
+          </div>
+        </div>
+        <div class="rec-extra-btns">
+          <button>⏮ 15초</button>
+          <button class="speed-btn">1x</button>
+          <button>15초 ⏭</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── MEMO PANEL ── -->
+  <div class="memo-panel">
+    <div class="memo-panel-header">
+      <div class="sub-tabs">
+        <div class="memo-sub-tab active">메모·요약</div>
+        <div class="memo-sub-tab">화자</div>
+      </div>
+    </div>
+    <div class="memo-panel-body">
+
+      <!-- AI Summary card -->
+      <div class="ai-summary-card">
+        <div class="ai-badge">✨ AI 요약</div>
+        <p>중국 공장 생산 라인의 용접 불량 문제가 3월 13일부터 발생. 해당 기간 출하된 제품의 품질 이슈로 이어질 가능성 있음. 전수 검사 시 2~3일 생산 지연 예상.</p>
+        <div class="refresh-hint">↻ 녹음 종료 후 갱신</div>
+      </div>
+
+      <!-- Memo input -->
+      <button class="memo-add-btn">+ 메모 추가하기</button>
+
+      <!-- Existing memo -->
+      <div class="memo-item">
+        13일 이전 물량 재확인 필요. 담당자: 박팀장
+        <div class="memo-time">01:03에 추가</div>
+      </div>
+
+      <!-- Speaker mapping section -->
+      <div class="speaker-map-section">
+        <div class="speaker-map-title">
+          👤 화자 이름 지정
+          <span style="font-size:11px; font-weight:400; color:var(--text-muted)">2명 감지됨</span>
+        </div>
+        <div class="speaker-map-row">
+          <div class="speaker-map-avatar avatar-1">1</div>
+          <div class="speaker-map-label">화자 1</div>
+          <input class="speaker-map-input" placeholder="이름 입력">
+        </div>
+        <div class="speaker-map-row">
+          <div class="speaker-map-avatar avatar-2">2</div>
+          <div class="speaker-map-label">화자 2</div>
+          <input class="speaker-map-input" placeholder="이름 입력">
+        </div>
+        <div class="speaker-map-row">
+          <div class="speaker-map-avatar avatar-3">3</div>
+          <div class="speaker-map-label">화자 3</div>
+          <input class="speaker-map-input" placeholder="이름 입력">
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /app-shell -->
+
+<!-- Toggle overlay button -->
+<button class="toggle-overlay-btn" id="toggleOverlayBtn">
+  🔄 모델 다운로드 화면 보기
+</button>
+
+<script>
+  // Simulate model download progress
+  let whisperPct = 58;
+  let speakerPct = 0;
+  let speakerStarted = false;
+  const overlay = document.getElementById('modelOverlay');
+  const whisperBar = document.getElementById('whisperBar');
+  const whisperPctEl = document.getElementById('whisperPct');
+  const speakerBar = document.getElementById('speakerBar');
+  const speakerPctEl = document.getElementById('speakerPct');
+
+  const modelTimer = setInterval(() => {
+    if (!overlay.style.display || overlay.style.display !== 'none') {
+      whisperPct = Math.min(100, whisperPct + 2);
+      whisperBar.style.width = whisperPct + '%';
+      whisperPctEl.textContent = whisperPct + '%';
+
+      if (whisperPct >= 100 && !speakerStarted) {
+        speakerStarted = true;
+        speakerPctEl.textContent = '0%';
+      }
+      if (speakerStarted) {
+        speakerPct = Math.min(100, speakerPct + 4);
+        speakerBar.style.width = speakerPct + '%';
+        speakerPctEl.textContent = speakerPct + '%';
+      }
+      if (whisperPct >= 100 && speakerPct >= 100) {
+        clearInterval(modelTimer);
+        setTimeout(() => { overlay.style.display = 'none'; }, 600);
+      }
+    }
+  }, 120);
+
+  document.getElementById('toggleOverlayBtn').addEventListener('click', () => {
+    overlay.style.display = overlay.style.display === 'none' ? 'flex' : 'none';
+    whisperPct = 0; speakerPct = 0; speakerStarted = false;
+    whisperBar.style.width = '0%'; whisperPctEl.textContent = '0%';
+    speakerBar.style.width = '0%'; speakerPctEl.textContent = '대기 중...';
+    modelTimer; // restart
+  });
+
+  // Simulate live typing
+  const liveTexts = [
+    '예상으로는 2~3일 정도 소요될 것 같고요, 납기일 기준으로 보면',
+    '예상으로는 2~3일 정도 소요될 것 같고요, 납기일 기준으로 보면 이번 주 금요일까지는',
+    '예상으로는 2~3일 정도 소요될 것 같고요, 납기일 기준으로 보면 이번 주 금요일까지는 가능할 것 같습니다.',
+  ];
+  let liveIdx = 0;
+  const liveEl = document.getElementById('liveText');
+  setInterval(() => {
+    if (liveIdx < liveTexts.length - 1) {
+      liveIdx++;
+      liveEl.textContent = liveTexts[liveIdx];
+    } else {
+      liveEl.classList.remove('typing');
+    }
+  }, 2500);
+
+  // Scroll transcript to bottom
+  const scroll = document.getElementById('transcriptScroll');
+  scroll.scrollTop = scroll.scrollHeight;
+
+  // Progress bar animation
+  let progress = 5.6; // percent
+  const totalSecs = 35 * 60 + 7;
+  let elapsed = Math.floor(progress / 100 * totalSecs);
+  setInterval(() => {
+    elapsed = Math.min(totalSecs, elapsed + 1);
+    progress = elapsed / totalSecs * 100;
+    document.getElementById('progressFill').style.width = progress + '%';
+    document.getElementById('progressThumb').style.left = `calc(${progress}% - 6px)`;
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    document.getElementById('currentTime').textContent =
+      `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+
+  // Keyword tag toggle
+  document.querySelectorAll('.keyword-tag').forEach(t => {
+    t.addEventListener('click', () => t.classList.toggle('selected'));
+  });
+
+  // Tab switch
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+    });
+  });
+  document.querySelectorAll('.memo-sub-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.memo-sub-tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+    });
+  });
+
+  // Note item click
+  document.querySelectorAll('.note-item').forEach(n => {
+    n.addEventListener('click', () => {
+      document.querySelectorAll('.note-item').forEach(x => x.classList.remove('active'));
+      n.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

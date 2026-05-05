@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoNote — UI 개선안 (V1 정돈형 · V2 Granola형)</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  body { background: #f0eee9; height: 100vh; overflow: hidden; }
+  /* Reset font for canvas chrome */
+  .dc-card { background: #fff; }
+  .artboard-host {
+    width: 100%; height: 100%;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    background: var(--surface);
+  }
+  /* Cover note styling */
+  .intro-card {
+    width: 100%; height: 100%;
+    padding: 36px 40px;
+    background: var(--surface);
+    border-radius: 10px;
+    display: flex; flex-direction: column; gap: 14px;
+    overflow: hidden;
+  }
+  .intro-card h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .intro-card .lede { font-size: 13.5px; line-height: 1.6; color: var(--ink-2); }
+  .intro-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-4); margin-top: 6px; }
+  .intro-card ul { font-size: 13px; line-height: 1.65; color: var(--ink-2); padding-left: 16px; }
+  .intro-card ul li { margin-bottom: 4px; }
+  .intro-card .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 999px; font-size: 11px; color: var(--ink-2); font-weight: 500;
+  }
+  .intro-card .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+</style>
+</head>
+<body>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="v1.jsx"></script>
+<script type="text/babel" src="v2.jsx"></script>
+
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "primary": "v1",
+  "fontScale": 1,
+  "speakerColors": "default",
+  "showSummaryCard": true,
+  "showWaveform": true,
+  "compactSidebar": false
+}/*EDITMODE-END*/;
+
+const PRIMARY_COLORS = {
+  default: { sp1: '#4f46e5', sp2: '#0d9488', sp3: '#b45309', sp4: '#be185d' },
+  warm:    { sp1: '#9a3412', sp2: '#a16207', sp3: '#7c2d12', sp4: '#831843' },
+  cool:    { sp1: '#1e40af', sp2: '#0e7490', sp3: '#3730a3', sp4: '#5b21b6' },
+  mono:    { sp1: '#18181b', sp2: '#52525b', sp3: '#71717a', sp4: '#a1a1aa' },
+};
+
+function applyTweaks(t) {
+  const root = document.documentElement;
+  const colors = PRIMARY_COLORS[t.speakerColors] || PRIMARY_COLORS.default;
+  root.style.setProperty('--sp1', colors.sp1);
+  root.style.setProperty('--sp2', colors.sp2);
+  root.style.setProperty('--sp3', colors.sp3);
+  root.style.setProperty('--sp4', colors.sp4);
+  root.style.fontSize = (14 * t.fontScale) + 'px';
+}
+
+// ─── Cover (intro) artboard ─────────────────────
+function CoverCard() {
+  return (
+    <div className="intro-card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--ink)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>A</div>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>AutoNote · UI 개선 검토</span>
+      </div>
+      <h1>ClovaNote 스타일 → 라이트 미니멀로</h1>
+      <p className="lede">
+        받아본 목업의 강점은 그대로 두고, <strong>정보 위계</strong>·<strong>컬러 언어</strong>·<strong>메모와 요약의 관계</strong>를
+        다시 정리했습니다. 동일한 데이터·기능 셋으로 두 가지 방향을 비교합니다.
+      </p>
+
+      <h3>핵심 변경</h3>
+      <ul>
+        <li><strong>다크 사이드바 → 라이트 그레이 (Notion 톤)</strong> — 라이브 화면이 메인이라, 시선 분산을 줄입니다</li>
+        <li><strong>녹색 액센트 제거</strong> — 화자 컬러를 의미 있는 단 한 가지 컬러 시스템으로 통일</li>
+        <li><strong>키워드 14개 산만 → 6개 + 카운트 + 검색 통합</strong></li>
+        <li><strong>화자 버블 = 이름 라벨 + 본문</strong> (말풍선/들여쓰기 제거 → 실제 노트처럼 읽힘)</li>
+        <li><strong>AI 요약을 트랜스크립트 상단 인라인 카드로</strong> — 우측 메모와 분리</li>
+        <li><strong>메모 ↔ 발화 시점 앵커링</strong> (01:03 클릭 → 해당 위치로 점프)</li>
+      </ul>
+
+      <h3>두 변형</h3>
+      <div className="pills">
+        <span className="pill"><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#18181b' }} />V1 정돈형 — 기존 구조 유지·정제</span>
+        <span className="pill"><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#7c3aed' }} />V2 Granola형 — 노트가 1차 시민</span>
+      </div>
+
+      <h3>다음 액션</h3>
+      <ul>
+        <li>두 안 중 베이스 결정 → 컴포넌트 단위로 세부 사양 확정</li>
+        <li>Tweaks 패널(우측 하단)에서 화자 컬러·폰트 크기·요약 카드 노출 등 즉석 조정</li>
+        <li>풀스크린 보기: 우상단 ⤢ 아이콘으로 각 화면 단독 검토</li>
+      </ul>
+    </div>
+  );
+}
+
+function Root() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  React.useEffect(() => { applyTweaks(t); }, [t]);
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="overview" title="검토 노트" subtitle="개선 방향 요약 + 두 변형 소개">
+          <DCArtboard id="cover" label="검토 노트" width={720} height={580}>
+            <CoverCard />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="variants" title="두 가지 변형" subtitle="동일 데이터 · 다른 정보 위계">
+          <DCArtboard id="v1" label="V1 · 정돈형 (사이드바 + 트랜스크립트 + 메모 패널)" width={1320} height={820}>
+            <div className="artboard-host"><V1App tweaks={t} /></div>
+          </DCArtboard>
+          <DCArtboard id="v2" label="V2 · Granola형 (트랜스크립트 + 인라인 노트)" width={1320} height={820}>
+            <div className="artboard-host"><V2App tweaks={t} /></div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="states" title="상태 · 보조 화면" subtitle="최초 모델 다운로드 모달">
+          <DCArtboard id="loading" label="모델 다운로드 — 라이트 미니멀" width={520} height={420}>
+            <div style={{ width: '100%', height: '100%', position: 'relative', background: 'var(--surface-2)', borderRadius: 10, overflow: 'hidden' }}>
+              <div className="modal-bg" style={{ position: 'absolute' }}>
+                <div className="modal">
+                  <h3><span className="spinner" /> 음성 인식 모델 준비 중</h3>
+                  <p className="sub">최초 1회만 약 91MB를 다운로드합니다. 이후 인터넷 없이 동작합니다.</p>
+                  <div className="dl-row">
+                    <div className="dl-l"><span>Whisper Base · 음성 인식</span><span className="pct">58%</span></div>
+                    <div className="dl-bar"><div className="dl-fill" style={{ width: '58%' }} /></div>
+                  </div>
+                  <div className="dl-row">
+                    <div className="dl-l"><span>WeSpeaker · 화자 구분</span><span className="pct" style={{ color: 'var(--ink-4)' }}>대기 중</span></div>
+                    <div className="dl-bar"><div className="dl-fill" style={{ width: '0%' }} /></div>
+                  </div>
+                  <div className="foot">캐시 후 다음 실행부터 즉시 시작 · 진행률은 백그라운드에서 계속 갱신됩니다.</div>
+                </div>
+              </div>
+            </div>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel>
+        <TweakSection label="Typography" />
+        <TweakSlider label="폰트 배율" value={t.fontScale} min={0.85} max={1.2} step={0.05}
+          onChange={(v) => setTweak('fontScale', v)} />
+        <TweakSection label="화자 색상" />
+        <TweakSelect label="팔레트" value={t.speakerColors}
+          options={[
+            { label: '기본 (인디고/티/앰버)', value: 'default' },
+            { label: '웜 (브라운 톤)', value: 'warm' },
+            { label: '쿨 (블루 톤)', value: 'cool' },
+            { label: '모노크롬', value: 'mono' },
+          ]}
+          onChange={(v) => setTweak('speakerColors', v)} />
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+</script>
+
+</body>
+</html>

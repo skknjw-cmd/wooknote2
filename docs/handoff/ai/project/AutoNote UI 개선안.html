@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoNote — V2 Granola형 (확정)</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="styles2.css" />
+<link rel="stylesheet" href="styles3.css" />
+<style>
+  body { background: #f0eee9; height: 100vh; overflow: hidden; }
+  .artboard-host {
+    width: 100%; height: 100%;
+    border-radius: 10px; overflow: hidden;
+    position: relative; background: var(--surface);
+  }
+  .intro-card { padding: 32px 40px; height: 100%; overflow: auto; }
+  .intro-card h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 10px; }
+  .intro-card .lede { font-size: 13.5px; line-height: 1.65; color: var(--ink-2); margin-bottom: 14px; }
+  .intro-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-4); margin: 14px 0 8px; }
+  .intro-card ul { font-size: 13px; line-height: 1.7; color: var(--ink-2); padding-left: 18px; }
+  .intro-card ul li { margin-bottom: 4px; }
+  .intro-card .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .intro-card .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 999px;
+    font-size: 11px; color: var(--ink-2); font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<template id="__bundler_thumbnail" data-bg-color="#f0eee9">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#f0eee9"/>
+    <rect x="220" y="220" width="320" height="360" rx="14" fill="#f4f3ee" stroke="#e7e5e0" stroke-width="2"/>
+    <rect x="260" y="270" width="80" height="10" rx="3" fill="#a3a09a"/>
+    <rect x="260" y="300" width="240" height="6" rx="3" fill="#d6d3cd"/>
+    <rect x="260" y="316" width="200" height="6" rx="3" fill="#d6d3cd"/>
+    <rect x="260" y="332" width="220" height="6" rx="3" fill="#d6d3cd"/>
+    <rect x="260" y="380" width="60" height="8" rx="3" fill="#a3a09a"/>
+    <rect x="260" y="402" width="240" height="6" rx="3" fill="#d6d3cd"/>
+    <rect x="260" y="418" width="180" height="6" rx="3" fill="#d6d3cd"/>
+    <rect x="580" y="220" width="400" height="360" rx="14" fill="#ffffff" stroke="#e7e5e0" stroke-width="2"/>
+    <rect x="620" y="270" width="180" height="14" rx="4" fill="#1f1d1a"/>
+    <rect x="620" y="310" width="140" height="8" rx="3" fill="#a3a09a"/>
+    <rect x="620" y="350" width="320" height="56" rx="10" fill="#f4f3ee"/>
+    <circle cx="640" cy="378" r="5" fill="#7c3aed"/>
+    <rect x="656" y="362" width="240" height="6" rx="3" fill="#1f1d1a"/>
+    <rect x="656" y="378" width="200" height="6" rx="3" fill="#a3a09a"/>
+    <rect x="656" y="394" width="180" height="6" rx="3" fill="#a3a09a"/>
+    <rect x="620" y="430" width="320" height="6" rx="3" fill="#d6d3cd"/>
+    <rect x="620" y="446" width="280" height="6" rx="3" fill="#d6d3cd"/>
+    <rect x="620" y="462" width="300" height="6" rx="3" fill="#d6d3cd"/>
+    <rect x="620" y="510" width="14" height="14" rx="3" fill="#1f1d1a"/>
+    <rect x="644" y="514" width="200" height="6" rx="3" fill="#1f1d1a"/>
+    <circle cx="180" cy="180" r="6" fill="#dc2626"/>
+    <rect x="196" y="174" width="60" height="12" rx="3" fill="#dc2626"/>
+  </svg>
+</template>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="data2.jsx"></script>
+<script type="text/babel" src="v2-final.jsx"></script>
+<script type="text/babel" src="speaker-flow.jsx"></script>
+
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "fontScale": 1,
+  "speakerColors": "default"
+}/*EDITMODE-END*/;
+
+const PRIMARY_COLORS = {
+  default: { sp1: '#4f46e5', sp2: '#0d9488', sp3: '#b45309', sp4: '#be185d' },
+  warm:    { sp1: '#9a3412', sp2: '#a16207', sp3: '#7c2d12', sp4: '#831843' },
+  cool:    { sp1: '#1e40af', sp2: '#0e7490', sp3: '#3730a3', sp4: '#5b21b6' },
+  mono:    { sp1: '#18181b', sp2: '#52525b', sp3: '#71717a', sp4: '#a1a1aa' },
+};
+function applyTweaks(t) {
+  const r = document.documentElement;
+  const c = PRIMARY_COLORS[t.speakerColors] || PRIMARY_COLORS.default;
+  r.style.setProperty('--sp1', c.sp1); r.style.setProperty('--sp2', c.sp2);
+  r.style.setProperty('--sp3', c.sp3); r.style.setProperty('--sp4', c.sp4);
+  r.style.fontSize = (14 * t.fontScale) + 'px';
+}
+
+function CoverCard() {
+  return (
+    <div className="intro-card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--ink)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>A</div>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>AutoNote · V2 확정안</span>
+      </div>
+      <h1>노트가 1차 시민, 트랜스크립트는 옆에서 흐르는 구조</h1>
+      <p className="lede">
+        라이브 회의에서 사용자는 <strong>듣고 → 쓰고 → 정리한다</strong>. 우측 노트 영역이 가장 넓고,
+        좌측 트랜스크립트는 380px로 맥락만 제공합니다. AI 정리는 8개 블록 중 하나일 뿐, 전체 문서를
+        지배하지 않습니다.
+      </p>
+
+      <h3>구성된 노트 블록 (8종)</h3>
+      <ul>
+        <li><strong>AI 정리</strong> — 회의 중엔 수동(다시 정리), 종료 시 자동</li>
+        <li><strong>맥락 / 배경</strong> — 트랜스크립트 인용 자동 첨부 가능</li>
+        <li><strong>결정사항</strong> · <strong>해야 할 일</strong> (담당자 + 기한)</li>
+        <li><strong>미해결 질문</strong> · <strong>참여자</strong> (화자 자동 매핑)</li>
+        <li><strong>다음 회의 안건</strong> · <strong>자유 메모</strong></li>
+      </ul>
+
+      <h3>인터랙션</h3>
+      <ul>
+        <li>트랜스크립트 시간(00:48) 클릭 → 노트의 인용 블록에 자동 삽입</li>
+        <li>화자 이름 클릭 → 인라인 편집, 전체 트랜스크립트에 일괄 적용</li>
+        <li>키워드 칩 토글 → 본문 하이라이트 (검색과 동시에)</li>
+        <li>녹음 종료 → 검토 모드로 전환, AI 정리 자동 갱신, 상단 배너 안내</li>
+      </ul>
+
+      <h3>4가지 화면</h3>
+      <div className="pills">
+        <span className="pill">① 라이브 녹음 중</span>
+        <span className="pill">② 검토 모드 (종료 후)</span>
+        <span className="pill">③ 내보내기 모달</span>
+        <span className="pill">④ 모델 다운로드 (최초 1회)</span>
+      </div>
+    </div>
+  );
+}
+
+function Root() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  React.useEffect(() => { applyTweaks(t); }, [t]);
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="cover" title="V2 확정안 — 개요" subtitle="설계 의도와 4가지 화면 구성">
+          <DCArtboard id="cover" label="검토 노트" width={680} height={520}>
+            <CoverCard />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="speakers" title="①️ 화자 매핑 흐름" subtitle="(b) 회의 시작 전 사전 등록 → (c) 라이브 중 새 화자 감지 시 인라인 매핑">
+          <DCArtboard id="roster" label="(b) 회의 시작 전 — 참여자 사전 등록 (캘린더 자동 제안 포함)" width={720} height={760}>
+            <PreMeetingRoster />
+          </DCArtboard>
+          <DCArtboard id="live-prompt" label="(c) 라이브 중 — 새 화자 첫 발화 시 인라인 매핑 프롬프트" width={1440} height={900}>
+            <div className="artboard-host"><LiveWithPrompt /></div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="primary" title="① 라이브 녹음 중" subtitle="메인 시나리오 — 회의가 진행되는 동안">
+          <DCArtboard id="live" label="라이브 — 트랜스크립트(좌, 380px) + 노트(우, 메인)" width={1440} height={900}>
+            <div className="artboard-host"><V2Final mode="live" /></div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="review" title="② 검토 모드" subtitle="녹음 종료 직후 — AI 정리 자동 완료, 같은 레이아웃 유지">
+          <DCArtboard id="review" label="검토 모드 — 종료 배너 + 재생 컨트롤" width={1440} height={900}>
+            <div className="artboard-host"><V2Final mode="review" /></div>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="states" title="③ 보조 화면" subtitle="내보내기 · 모델 다운로드">
+          <DCArtboard id="export" label="내보내기 — PDF · Markdown · Word · 오디오" width={1440} height={900}>
+            <div className="artboard-host"><V2Final mode="review" showExport={true} /></div>
+          </DCArtboard>
+
+          <DCArtboard id="loading" label="최초 모델 다운로드 (약 91MB · 1회)" width={520} height={420}>
+            <div style={{ width: '100%', height: '100%', position: 'relative', background: 'var(--surface-2)', borderRadius: 10, overflow: 'hidden' }}>
+              <div className="modal-bg" style={{ position: 'absolute' }}>
+                <div className="modal">
+                  <h3><span className="spinner" /> 음성 인식 모델 준비 중</h3>
+                  <p className="sub">최초 1회만 약 91MB를 다운로드합니다. 이후 인터넷 없이 동작합니다.</p>
+                  <div className="dl-row">
+                    <div className="dl-l"><span>Whisper Base · 음성 인식</span><span className="pct">58%</span></div>
+                    <div className="dl-bar"><div className="dl-fill" style={{ width: '58%' }} /></div>
+                  </div>
+                  <div className="dl-row">
+                    <div className="dl-l"><span>WeSpeaker · 화자 구분</span><span className="pct" style={{ color: 'var(--ink-4)' }}>대기 중</span></div>
+                    <div className="dl-bar"><div className="dl-fill" style={{ width: '0%' }} /></div>
+                  </div>
+                  <div className="foot">캐시 후 다음 실행부터 즉시 시작 · 진행률은 백그라운드에서 계속 갱신됩니다.</div>
+                </div>
+              </div>
+            </div>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel>
+        <TweakSection label="Typography" />
+        <TweakSlider label="폰트 배율" value={t.fontScale} min={0.85} max={1.2} step={0.05}
+          onChange={(v) => setTweak('fontScale', v)} />
+        <TweakSection label="화자 색상" />
+        <TweakSelect label="팔레트" value={t.speakerColors}
+          options={[
+            { label: '기본 (인디고/티/앰버)', value: 'default' },
+            { label: '웜', value: 'warm' },
+            { label: '쿨', value: 'cool' },
+            { label: '모노크롬', value: 'mono' },
+          ]}
+          onChange={(v) => setTweak('speakerColors', v)} />
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+</script>
+
+</body>
+</html>
