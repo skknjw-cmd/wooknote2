@@ -341,7 +341,7 @@ export default function Home() {
   if (screen === "roster") {
     return (
       <>
-        <PreMeetingRoster onStart={handleStart} onSkip={handleSkip} />
+        <PreMeetingRoster onStart={handleStart} onSkip={handleSkip} onBack={() => setScreen("mode-select")} />
         {showExport && (
           <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />
         )}

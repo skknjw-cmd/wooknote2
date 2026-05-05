@@ -6,13 +6,14 @@ import type { Participant } from "@/types/meeting";
 interface PreMeetingRosterProps {
   onStart: (participants: Participant[]) => void;
   onSkip: () => void;
+  onBack?: () => void;
 }
 
 const DEFAULT_PARTICIPANTS: Participant[] = [
   { sp: 1, name: "", role: "", initials: "?" },
 ];
 
-export default function PreMeetingRoster({ onStart, onSkip }: PreMeetingRosterProps) {
+export default function PreMeetingRoster({ onStart, onSkip, onBack }: PreMeetingRosterProps) {
   const [roster, setRoster] = useState<Participant[]>(DEFAULT_PARTICIPANTS);
   const [calOpen, setCalOpen] = useState(true);
 
@@ -49,6 +50,16 @@ export default function PreMeetingRoster({ onStart, onSkip }: PreMeetingRosterPr
 
   return (
     <div className="roster-stage">
+      {onBack && (
+        <header className="entry-head" style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
+          <button className="back" onClick={onBack}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <polyline points="10 4 6 8 10 12" />
+            </svg>
+            돌아가기
+          </button>
+        </header>
+      )}
       <div className="roster-card">
         <h2>회의 참여자</h2>
         <p className="sub">
