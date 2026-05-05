@@ -256,13 +256,14 @@ export default function NoteDocument({
   const [questions, setQuestions] = useState<string[]>(data.questions ?? []);
   const [nextAgenda, setNextAgenda] = useState<string[]>(data.nextAgenda ?? []);
 
-  // note prop 변경 시 동기화 (다른 노트로 전환)
+  // note prop 변경 시 동기화 — id 변경(노트 전환) 또는 분석 결과 도착 시
   useEffect(() => {
     setDecisions(note?.decisions ?? []);
     setActions(note?.actions ?? []);
     setQuestions(note?.questions ?? []);
     setNextAgenda(note?.nextAgenda ?? []);
-  }, [note?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note?.id, note?.decisions, note?.actions, note?.questions, note?.nextAgenda]);
 
   // ── 드래프트 열림 상태 ─────────────────────────────────────
   const [addingDecision, setAddingDecision] = useState(false);
