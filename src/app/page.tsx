@@ -53,34 +53,45 @@ function emptyNote(method?: InputMode): NoteRecord {
 function applyAnalysis(note: NoteRecord, result: AnalysisResult): NoteRecord {
   const sections = result.sections ?? [];
 
+  console.log("[applyAnalysis] sections:", sections.map((s) => `${s.name}(${s.type},${s.content?.length ?? 0})`));
+
+  // 정확한 이름 우선, 부분 일치 후순위. "결정"만으로 매칭하면 "미결정사항"에 잘못 걸림.
   function find(...keywords: string[]) {
     return sections.find((s) => keywords.some((k) => s.name.includes(k)));
   }
 
   function toStrings(section: AnalysisResult["sections"][number] | undefined): string[] {
     if (!section || section.type !== "numbered") return [];
-    return section.content
+    const content = Array.isArray(section.content) ? section.content : [];
+    return content
       .map((c) => (c.title && c.description ? `${c.title}: ${c.description}` : c.title || c.description || ""))
       .filter(Boolean);
   }
 
   const todoSection = find("To-Do", "실행과제", "할 일");
+  const rawActions = Array.isArray(todoSection?.content) ? todoSection!.content : [];
   const actions =
     todoSection?.type === "table"
-      ? todoSection.content
+      ? rawActions
           .filter((c) => c.task)
           .map((c) => ({ what: c.task, who: c.owner ?? "", when: c.due ?? "", done: false }))
       : [];
+
+  const decisions = toStrings(find("주요 결정사항", "결정사항"));
+  const questions = toStrings(find("미결정사항", "미결정", "미해결"));
+  const nextAgenda = toStrings(find("향후 일정", "일정"));
+
+  console.log("[applyAnalysis] decisions:", decisions, "actions:", actions.length, "questions:", questions, "nextAgenda:", nextAgenda);
 
   return {
     ...note,
     title: result.title || note.title,
     summaryBullets: toStrings(find("핵심요약", "요약")),
     context: toStrings(find("논의 내용", "논의내용", "맥락", "배경")).join("\n\n") || note.context,
-    decisions: toStrings(find("결정사항", "결정")),
+    decisions,
     actions,
-    questions: toStrings(find("미결정", "미해결", "질문")),
-    nextAgenda: toStrings(find("향후 일정", "일정", "안건")),
+    questions,
+    nextAgenda,
   };
 }
 
