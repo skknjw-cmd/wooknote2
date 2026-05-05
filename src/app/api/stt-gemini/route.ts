@@ -16,6 +16,7 @@ type ApiSttResponse = {
 };
 
 const MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+const CHUNK_DURATION_S = 30; // useOfflineSTT.ts의 CHUNK_MS와 동기화
 
 function buildPrompt(
   attendeeCount?: number,
@@ -34,17 +35,20 @@ function buildPrompt(
     ? `\n직전 대화 (화자 번호를 반드시 이어서 사용하세요):\n${prevContext.map((t) => `[화자 ${t.sp}] ${t.text}`).join("\n")}\n`
     : "";
 
-  return `다음 회의 오디오를 한국어로 전사하고 화자를 분리해주세요.${countHint}${nameHint}${contextHint}
+  const durationHint = `\n이 오디오 클립은 약 ${Math.round(CHUNK_DURATION_S)}초 분량입니다. 그 이상의 내용은 절대 생성하지 마세요.`;
 
-규칙:
-1. 각 발화를 [화자 1], [화자 2] 형식으로 레이블링하세요.
-2. 직전 대화가 제공된 경우 동일한 화자 번호를 그대로 이어서 사용하세요.
-3. 화자를 구분할 때 목소리 높낮이, 말투, 억양 차이를 최대한 활용하세요.
-4. 화자가 한 명뿐이더라도 반드시 [화자 1] 레이블을 붙이세요.
-5. 같은 화자가 연속으로 말하면 하나로 묶으세요.
-6. 발화 내용을 정확히 전사하세요. 실제로 들리는 내용만 적고 절대 반복하지 마세요.
-7. 같은 문장이 이미 적혔다면 다시 적지 마세요.
-8. 침묵이나 잡음은 무시하세요.
+  return `다음 회의 오디오 클립을 한국어로 전사하고 화자를 분리해주세요.${countHint}${nameHint}${durationHint}${contextHint}
+
+엄격한 규칙:
+1. 오디오에서 실제로 들리는 발화만 전사하세요. 들리지 않는 내용은 절대 추가하지 마세요.
+2. 오디오가 끝나면 즉시 전사를 멈추세요. 내용을 이어서 만들어내지 마세요.
+3. 각 발화를 [화자 1], [화자 2] 형식으로 레이블링하세요.
+4. 직전 대화가 제공된 경우 동일한 화자 번호를 그대로 이어서 사용하세요.
+5. 화자를 구분할 때 목소리 높낮이, 말투, 억양 차이를 최대한 활용하세요.
+6. 화자가 한 명뿐이더라도 반드시 [화자 1] 레이블을 붙이세요.
+7. 같은 화자가 연속으로 말하면 하나로 묶으세요.
+8. 같은 문장을 두 번 이상 쓰지 마세요.
+9. 침묵이나 잡음은 무시하세요.
 
 출력 형식 (다른 설명 없이 아래 형식만):
 [화자 1] 발화 내용
@@ -117,7 +121,7 @@ export async function POST(req: NextRequest) {
     for (const modelName of MODEL_CHAIN) {
       try {
         const model = genAI.getGenerativeModel(
-          { model: modelName, generationConfig: { temperature: 0.1, maxOutputTokens: 3072 } },
+          { model: modelName, generationConfig: { temperature: 0, maxOutputTokens: 1200 } },
           { apiVersion: "v1" }
         );
         const result = await model.generateContent([

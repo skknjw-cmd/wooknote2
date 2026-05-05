@@ -110,7 +110,7 @@ export function useOfflineSTT(): STTState {
       ? "audio/webm;codecs=opus"
       : "audio/webm";
 
-    const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 });
+    const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64000 });
 
     recorder.ondataavailable = (e) => {
       if (e.data.size) processChunk(e.data, chunkStartMs);
