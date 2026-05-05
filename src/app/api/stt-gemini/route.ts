@@ -42,8 +42,9 @@ function buildPrompt(
 3. 화자를 구분할 때 목소리 높낮이, 말투, 억양 차이를 최대한 활용하세요.
 4. 화자가 한 명뿐이더라도 반드시 [화자 1] 레이블을 붙이세요.
 5. 같은 화자가 연속으로 말하면 하나로 묶으세요.
-6. 발화 내용을 정확히 전사하세요. 반복 없이 딱 한 번만 적으세요.
-7. 침묵이나 잡음은 무시하세요.
+6. 발화 내용을 정확히 전사하세요. 실제로 들리는 내용만 적고 절대 반복하지 마세요.
+7. 같은 문장이 이미 적혔다면 다시 적지 마세요.
+8. 침묵이나 잡음은 무시하세요.
 
 출력 형식 (다른 설명 없이 아래 형식만):
 [화자 1] 발화 내용
@@ -57,20 +58,26 @@ function parseGeminiOutput(raw: string): ApiSegment[] {
     if (!m) continue;
     segments.push({ clovaLabel: m[1], text: m[2].trim() });
 
-    // Detect period-1 or period-2 cycle in the last 6 segments.
-    // e.g. "네/네/네/네/네/네" or "네/아/네/아/네/아"
+    // 루프 탐지: period 1~12 사이클 반복 검사
     const n = segments.length;
-    if (n >= 6) {
-      const tail = segments.slice(-6);
-      const evenTexts = new Set(tail.filter((_, i) => i % 2 === 0).map(s => s.text));
-      const oddTexts  = new Set(tail.filter((_, i) => i % 2 === 1).map(s => s.text));
-      if (evenTexts.size === 1 && oddTexts.size === 1) {
-        segments.splice(n - 6); // drop the looping tail entirely
+    let loopDetected = false;
+    for (let period = 1; period <= 12; period++) {
+      if (n < period * 3) continue; // 최소 3사이클은 봐야 확실
+      const a = segments.slice(n - period * 2, n - period).map(s => s.text);
+      const b = segments.slice(n - period).map(s => s.text);
+      if (a.every((t, i) => t === b[i])) {
+        segments.splice(n - period * 2);
+        loopDetected = true;
         break;
       }
     }
+    if (loopDetected) break;
   }
-  return segments;
+
+  // 연속 중복 제거: 바로 앞 세그먼트와 텍스트가 같으면 스킵
+  return segments.filter((seg, i) =>
+    i === 0 || seg.text !== segments[i - 1].text
+  );
 }
 
 export async function POST(req: NextRequest) {
