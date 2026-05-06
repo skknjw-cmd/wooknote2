@@ -128,6 +128,7 @@ export default function Home() {
   const prevTurnsLen = useRef(0);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioProgress, setAudioProgress] = useState<{ current: number; total: number } | undefined>();
+  const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
     const added = stt.turns.length - prevTurnsLen.current;
@@ -205,7 +206,16 @@ export default function Home() {
   // ── Live 녹음 분석 ──────────────────────────────────────────────────────────
 
   async function analyzeFromTurns(note: NoteRecord, turns: TurnSegment[], participants: Participant[]) {
-    if (turns.length === 0) return;
+    console.log("[analyze] turns:", turns.length, "hasKey:", hasApiKey());
+    if (turns.length === 0) {
+      alert("트랜스크립트가 없어 AI 분석을 건너뜁니다.");
+      return;
+    }
+    if (!hasApiKey()) {
+      alert("Gemini API 키가 설정되지 않았습니다.\n우상단 설정에서 API 키를 입력해주세요.");
+      return;
+    }
+
     const transcript = turns.map((t) => {
       const p = participants.find((p) => p.sp === t.sp);
       const label = p?.name || `화자 ${t.sp}`;
@@ -220,11 +230,15 @@ export default function Home() {
         : "미정",
     };
 
+    setAnalyzing(true);
     try {
       const result = await callAnalyze(transcript, meetingInfo);
       saveNote(applyAnalysis({ ...note, participants }, result));
     } catch (err) {
-      console.error("분석 실패:", err);
+      console.error("[analyze] 실패:", err);
+      alert("AI 분석 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setAnalyzing(false);
     }
   }
 
@@ -251,9 +265,8 @@ export default function Home() {
 
   async function handleRegen() {
     resetPending();
-    if (currentNote) {
-      await analyzeFromTurns(currentNote, stt.turns, stt.participants);
-    }
+    const note = currentNote ?? emptyNote("live");
+    await analyzeFromTurns(note, stt.turns, stt.participants);
   }
 
   // ── Text input mode ─────────────────────────────────────────────────────────
@@ -422,6 +435,7 @@ export default function Home() {
         onSplitTurn={stt.splitTurn}
         onUpdateNote={saveNote}
         onSettings={() => setShowApiKey(true)}
+        analyzing={analyzing}
       />
       {showExport && (
         <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />

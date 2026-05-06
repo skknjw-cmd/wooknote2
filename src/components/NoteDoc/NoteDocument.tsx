@@ -10,6 +10,7 @@ interface NoteDocumentProps {
   pendingTurnCount?: number;
   onRegen?: () => void;
   onUpdateNote?: (note: NoteRecord) => void;
+  analyzing?: boolean;
 }
 
 const EMPTY_NOTE: Partial<NoteRecord> = {
@@ -246,6 +247,7 @@ export default function NoteDocument({
   pendingTurnCount = 0,
   onRegen,
   onUpdateNote,
+  analyzing = false,
 }: NoteDocumentProps) {
   const [regenerating, setRegenerating] = useState(false);
   const data = { ...EMPTY_NOTE, ...note };
@@ -409,7 +411,15 @@ export default function NoteDocument({
                 </button>
               </div>
             </div>
-            {data.summaryBullets && data.summaryBullets.length > 0 ? (
+            {analyzing ? (
+              <p style={{ color: "var(--ink-3)", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ animation: "spin 1s linear infinite" }}>
+                  <path d="M2 8a6 6 0 1 0 1.5-4" />
+                  <polyline points="1 4 2 8 6 7" strokeLinejoin="round" />
+                </svg>
+                AI 분석 중...
+              </p>
+            ) : data.summaryBullets && data.summaryBullets.length > 0 ? (
               <ul>
                 {data.summaryBullets.map((b, i) => <li key={i}>{b}</li>)}
               </ul>

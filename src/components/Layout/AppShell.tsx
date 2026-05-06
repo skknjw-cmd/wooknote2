@@ -32,6 +32,7 @@ interface AppShellProps {
   onRegen?: () => void;
   onUpdateNote?: (note: NoteRecord) => void;
   onSettings?: () => void;
+  analyzing?: boolean;
 }
 
 export default function AppShell({
@@ -58,6 +59,7 @@ export default function AppShell({
   onRegen,
   onUpdateNote,
   onSettings,
+  analyzing = false,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
@@ -225,6 +227,7 @@ export default function AppShell({
             pendingTurnCount={pendingTurnCount}
             onRegen={onRegen}
             onUpdateNote={onUpdateNote}
+            analyzing={analyzing}
           />
         </div>
       </div>
