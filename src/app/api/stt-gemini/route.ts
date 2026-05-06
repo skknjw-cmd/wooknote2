@@ -32,7 +32,7 @@ function buildPrompt(
     : "";
 
   const contextHint = prevContext && prevContext.length > 0
-    ? `\n직전 대화 (화자 번호를 반드시 이어서 사용하세요):\n${prevContext.map((t) => `[화자 ${t.sp}] ${t.text}`).join("\n")}\n`
+    ? `\n[직전 대화 — 화자 번호 참고용. 이 내용은 출력에 절대 포함하지 마세요]\n${prevContext.map((t) => `[화자 ${t.sp}] ${t.text}`).join("\n")}\n[직전 대화 끝]\n`
     : "";
 
   const durationHint = `\n이 오디오 클립은 약 ${Math.round(CHUNK_DURATION_S)}초 분량입니다. 그 이상의 내용은 절대 생성하지 마세요.`;
@@ -49,6 +49,7 @@ function buildPrompt(
 7. 같은 화자가 연속으로 말하면 하나로 묶으세요.
 8. 같은 문장을 두 번 이상 쓰지 마세요.
 9. 침묵이나 잡음은 무시하세요.
+10. 직전 대화에 나온 문장을 절대 다시 쓰지 마세요. 이 오디오에서 새로 들리는 내용만 출력하세요.
 
 출력 형식 (다른 설명 없이 아래 형식만):
 [화자 1] 발화 내용
@@ -139,6 +140,12 @@ export async function POST(req: NextRequest) {
 
     if (!segments) {
       return NextResponse.json({ error: lastError }, { status: 503 });
+    }
+
+    // prevContext와 일치하는 세그먼트 제거 (Gemini가 직전 대화를 복사하는 현상 방지)
+    if (prevContext && prevContext.length > 0) {
+      const prevTexts = new Set(prevContext.map((t) => t.text.trim()));
+      segments = segments.filter((s) => !prevTexts.has(s.text.trim()));
     }
 
     if (segments.length === 0) {
