@@ -275,26 +275,33 @@ export default function Home() {
   // ── Audio file upload mode ──────────────────────────────────────────────────
 
   async function handleAudioSubmit(file: File) {
-    if (!currentNote) return;
     setAudioLoading(true);
+    const note = currentNote ?? emptyNote("audio");
+    if (!currentNote) setCurrentNote(note);
+    console.log("[audio] submit file:", file.name, file.size, "currentNote:", note.id);
     try {
+      if (!hasApiKey()) {
+        throw new Error("Gemini API 키가 설정되지 않았습니다. 설정 버튼을 눌러 API 키를 입력해주세요.");
+      }
       const form = new FormData();
       form.append("media", file);
       const sttRes = await fetch("/api/stt-gemini", { method: "POST", headers: apiKeyHeader(), body: form });
-      if (!sttRes.ok) throw new Error(await sttRes.text());
-      const { text: transcript } = await sttRes.json();
+      if (!sttRes.ok) throw new Error(`STT 실패 (${sttRes.status}): ${await sttRes.text()}`);
+      const sttJson = await sttRes.json();
+      console.log("[audio] STT result:", sttJson.text?.slice(0, 100));
+      const transcript = sttJson.text ?? "";
 
       const result = await callAnalyze(transcript, {
         title: file.name.replace(/\.[^.]+$/, ""),
         date: new Date().toLocaleDateString("ko-KR"),
         attendees: "미정",
       });
-      const updated = applyAnalysis({ ...currentNote, title: file.name.replace(/\.[^.]+$/, "") }, result);
+      const updated = applyAnalysis({ ...note, title: file.name.replace(/\.[^.]+$/, "") }, result);
       saveNote(updated);
       setAppMode("review");
       setScreen("live");
     } catch (err) {
-      console.error("변환 실패:", err);
+      console.error("[audio] 변환 실패:", err);
       alert("변환 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
     } finally {
       setAudioLoading(false);
