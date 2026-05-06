@@ -17,6 +17,7 @@ import {
   exportAsAudio,
 } from "@/lib/exportNote";
 import { apiKeyHeader, hasApiKey } from "@/lib/apiKey";
+import { chunkAudioFile } from "@/lib/audioChunk";
 import { useOfflineSTT } from "@/hooks/useOfflineSTT";
 import type {
   NoteRecord,
@@ -278,19 +279,36 @@ export default function Home() {
     setAudioLoading(true);
     const note = currentNote ?? emptyNote("audio");
     if (!currentNote) setCurrentNote(note);
-    console.log("[audio] submit file:", file.name, file.size, "currentNote:", note.id);
     try {
       if (!hasApiKey()) {
-        throw new Error("Gemini API 키가 설정되지 않았습니다. 설정 버튼을 눌러 API 키를 입력해주세요.");
+        throw new Error("Gemini API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.");
       }
-      const form = new FormData();
-      form.append("media", file);
-      const sttRes = await fetch("/api/stt-gemini", { method: "POST", headers: apiKeyHeader(), body: form });
-      if (!sttRes.ok) throw new Error(`STT 실패 (${sttRes.status}): ${await sttRes.text()}`);
-      const sttJson = await sttRes.json();
-      console.log("[audio] STT result:", sttJson.text?.slice(0, 100));
-      const transcript = sttJson.text ?? "";
 
+      // 파일을 30초 WAV 청크로 분할 (413 오류 방지)
+      const chunks = await chunkAudioFile(file);
+      console.log(`[audio] ${file.name} → ${chunks.length}개 청크`);
+
+      const texts: string[] = [];
+      let prevContext: { sp: number; text: string }[] = [];
+
+      for (let i = 0; i < chunks.length; i++) {
+        const form = new FormData();
+        form.append("media", chunks[i], `chunk_${i}.wav`);
+        if (prevContext.length > 0) form.append("prevContext", JSON.stringify(prevContext));
+
+        const sttRes = await fetch("/api/stt-gemini", { method: "POST", headers: apiKeyHeader(), body: form });
+        if (!sttRes.ok) throw new Error(`STT 청크 ${i + 1} 실패 (${sttRes.status}): ${await sttRes.text()}`);
+        const sttJson = await sttRes.json();
+        const chunkText: string = sttJson.text ?? "";
+        console.log(`[audio] 청크 ${i + 1}/${chunks.length}:`, chunkText.slice(0, 80));
+        if (chunkText) texts.push(chunkText);
+
+        // 다음 청크의 화자 연속성을 위한 컨텍스트 유지
+        const segs: { clovaLabel: string; text: string }[] = sttJson.segments ?? [];
+        prevContext = segs.slice(-3).map((s) => ({ sp: parseInt(s.clovaLabel) || 1, text: s.text }));
+      }
+
+      const transcript = texts.join("\n");
       const result = await callAnalyze(transcript, {
         title: file.name.replace(/\.[^.]+$/, ""),
         date: new Date().toLocaleDateString("ko-KR"),
