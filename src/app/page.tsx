@@ -70,10 +70,9 @@ function applyAnalysis(note: NoteRecord, result: AnalysisResult): NoteRecord {
   }
 
   const todoSection = find("To-Do", "실행과제", "할 일");
-  const rawActions = Array.isArray(todoSection?.content) ? todoSection!.content : [];
   const actions =
     todoSection?.type === "table"
-      ? rawActions
+      ? todoSection.content
           .filter((c) => c.task)
           .map((c) => ({ what: c.task, who: c.owner ?? "", when: c.due ?? "", done: false }))
       : [];
