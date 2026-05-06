@@ -11,9 +11,10 @@ export interface TextSubmitData {
 interface TextInputPanelProps {
   onSubmit: (data: TextSubmitData) => void;
   onBack?: () => void;
+  loading?: boolean;
 }
 
-export default function TextInputPanel({ onSubmit, onBack }: TextInputPanelProps) {
+export default function TextInputPanel({ onSubmit, onBack, loading = false }: TextInputPanelProps) {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(() => {
     const d = new Date();
@@ -75,11 +76,13 @@ export default function TextInputPanel({ onSubmit, onBack }: TextInputPanelProps
 
       <footer className="entry-foot">
         <button className="secondary" onClick={onBack}>취소</button>
-        <button className="primary" onClick={handleSubmit} disabled={!text.trim()}>
-          노트 만들기
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <polyline points="6 4 10 8 6 12" />
-          </svg>
+        <button className="primary" onClick={handleSubmit} disabled={!text.trim() || loading}>
+          {loading ? "AI 분석 중..." : "노트 만들기"}
+          {!loading && (
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <polyline points="6 4 10 8 6 12" />
+            </svg>
+          )}
         </button>
       </footer>
     </div>

@@ -527,6 +527,11 @@ export default function NoteDocument({
                       {a.who && <span className="who">@{a.who}</span>}
                       {a.when && <span className="when">{a.when}</span>}
                     </div>
+                    {a.notes && (
+                      <div style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 2 }}>
+                        완료기준: {a.notes}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

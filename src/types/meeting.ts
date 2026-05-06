@@ -98,6 +98,7 @@ export type ActionItem = {
   what: string;
   when: string;
   done: boolean;
+  notes?: string; // 완료기준
 };
 
 export type NoteRecord = {

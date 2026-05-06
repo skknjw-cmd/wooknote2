@@ -74,7 +74,7 @@ function applyAnalysis(note: NoteRecord, result: AnalysisResult): NoteRecord {
     todoSection?.type === "table"
       ? todoSection.content
           .filter((c) => c.task)
-          .map((c) => ({ what: c.task, who: c.owner ?? "", when: c.due ?? "", done: false }))
+          .map((c) => ({ what: c.task, who: c.owner ?? "", when: c.due ?? "", done: false, notes: c.notes || "" }))
       : [];
 
   const decisions = toStrings(find("주요 결정사항", "결정사항"));
@@ -272,17 +272,27 @@ export default function Home() {
   // ── Text input mode ─────────────────────────────────────────────────────────
 
   async function handleTextSubmit(data: TextSubmitData) {
-    if (!currentNote) return;
+    const note = currentNote ?? emptyNote("text");
+    if (!currentNote) setCurrentNote(note);
+    if (!hasApiKey()) {
+      alert("Gemini API 키가 설정되지 않았습니다.\n우상단 설정에서 API 키를 입력해주세요.");
+      return;
+    }
+    setAnalyzing(true);
     try {
       const result = await callAnalyze(data.text, {
         title: data.title,
         date: data.date || new Date().toLocaleDateString("ko-KR"),
         attendees: "미정",
       });
-      saveNote(applyAnalysis({ ...currentNote, title: data.title || currentNote.title }, result));
+      saveNote(applyAnalysis({ ...note, title: data.title || note.title }, result));
       setAppMode("review");
+      setScreen("live");
     } catch (err) {
       console.error("분석 실패:", err);
+      alert("AI 분석 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setAnalyzing(false);
     }
   }
 
@@ -405,7 +415,7 @@ export default function Home() {
   }
 
   if (screen === "text") {
-    return <TextInputPanel onSubmit={handleTextSubmit} onBack={() => setScreen("mode-select")} />;
+    return <TextInputPanel onSubmit={handleTextSubmit} onBack={() => setScreen("mode-select")} loading={analyzing} />;
   }
 
   if (screen === "audio") {
