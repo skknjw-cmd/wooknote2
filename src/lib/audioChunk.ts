@@ -1,5 +1,5 @@
 const SAMPLE_RATE = 16000;
-const CHUNK_DURATION_S = 30;
+const CHUNK_DURATION_S = 60;
 
 function encodeWav(pcm: Float32Array, sampleRate: number): ArrayBuffer {
   const dataSize = pcm.length * 2;

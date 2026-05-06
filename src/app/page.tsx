@@ -310,8 +310,15 @@ export default function Home() {
         form.append("media", chunks[i], `chunk_${i}.wav`);
         if (prevContext.length > 0) form.append("prevContext", JSON.stringify(prevContext));
 
-        const sttRes = await fetch("/api/stt-gemini", { method: "POST", headers: apiKeyHeader(), body: form });
-        if (!sttRes.ok) throw new Error(`STT 청크 ${i + 1} 실패 (${sttRes.status}): ${await sttRes.text()}`);
+        // 503/429 과부하 오류 시 최대 3회 재시도 (2s, 4s, 8s 대기)
+        let sttRes: Response | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 2000));
+          sttRes = await fetch("/api/stt-gemini", { method: "POST", headers: apiKeyHeader(), body: form });
+          if (sttRes.status !== 503 && sttRes.status !== 429) break;
+          console.warn(`[audio] 청크 ${i + 1} ${sttRes.status} → ${attempt + 1}회 재시도`);
+        }
+        if (!sttRes!.ok) throw new Error(`STT 청크 ${i + 1} 실패 (${sttRes!.status}): ${await sttRes!.text()}`);
         const sttJson = await sttRes.json();
         const chunkText: string = sttJson.text ?? "";
         console.log(`[audio] 청크 ${i + 1}/${chunks.length}:`, chunkText.slice(0, 80));
