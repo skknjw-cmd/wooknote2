@@ -6,9 +6,10 @@ interface AudioFilePanelProps {
   onSubmit: (file: File) => void;
   onBack?: () => void;
   loading?: boolean;
+  progress?: { current: number; total: number };
 }
 
-export default function AudioFilePanel({ onSubmit, onBack, loading = false }: AudioFilePanelProps) {
+export default function AudioFilePanel({ onSubmit, onBack, loading = false, progress }: AudioFilePanelProps) {
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -76,9 +77,26 @@ export default function AudioFilePanel({ onSubmit, onBack, loading = false }: Au
             </span>
             <div className="body">
               <div className="fn">{file.name}</div>
-              <div className="progress-bar"><div className="progress-fill" style={{ width: "0%" }} /></div>
+              <div className="progress-bar">
+                <div
+                  className="progress-fill"
+                  style={{
+                    width: progress
+                      ? `${Math.round((progress.current / progress.total) * 100)}%`
+                      : "0%",
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              </div>
               <div className="meta-line">
                 <span>{(file.size / 1024 / 1024).toFixed(1)} MB</span>
+                {progress && (
+                  <span style={{ color: "var(--ink-3)", fontSize: 11.5 }}>
+                    {progress.current < progress.total
+                      ? `${progress.current} / ${progress.total} 구간 처리 중...`
+                      : "AI 분석 중..."}
+                  </span>
+                )}
               </div>
             </div>
           </div>

@@ -127,6 +127,7 @@ export default function Home() {
   const [pendingTurnCount, setPendingTurnCount] = useState(0);
   const prevTurnsLen = useRef(0);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [audioProgress, setAudioProgress] = useState<{ current: number; total: number } | undefined>();
 
   useEffect(() => {
     const added = stt.turns.length - prevTurnsLen.current;
@@ -286,6 +287,7 @@ export default function Home() {
       // 파일을 30초 WAV 청크로 분할 (413 오류 방지)
       const chunks = await chunkAudioFile(file);
       console.log(`[audio] ${file.name} → ${chunks.length}개 청크`);
+      setAudioProgress({ current: 0, total: chunks.length });
 
       const texts: string[] = [];
       let prevContext: { sp: number; text: string }[] = [];
@@ -305,6 +307,8 @@ export default function Home() {
         // 다음 청크의 화자 연속성을 위한 컨텍스트 유지
         const segs: { clovaLabel: string; text: string }[] = sttJson.segments ?? [];
         prevContext = segs.slice(-3).map((s) => ({ sp: parseInt(s.clovaLabel) || 1, text: s.text }));
+
+        setAudioProgress({ current: i + 1, total: chunks.length });
       }
 
       const transcript = texts.join("\n");
@@ -322,6 +326,7 @@ export default function Home() {
       alert("변환 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
     } finally {
       setAudioLoading(false);
+      setAudioProgress(undefined);
     }
   }
 
@@ -385,7 +390,7 @@ export default function Home() {
   }
 
   if (screen === "audio") {
-    return <AudioFilePanel onSubmit={handleAudioSubmit} onBack={() => setScreen("mode-select")} loading={audioLoading} />;
+    return <AudioFilePanel onSubmit={handleAudioSubmit} onBack={() => setScreen("mode-select")} loading={audioLoading} progress={audioProgress} />;
   }
 
   if (screen === "video") {
