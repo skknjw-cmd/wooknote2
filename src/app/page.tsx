@@ -50,6 +50,36 @@ function emptyNote(method?: InputMode): NoteRecord {
   };
 }
 
+// 텍스트 → TurnSegment 파싱 ([화자 N] 또는 "이름: 내용" 또는 단순 줄바꿈)
+function parseTextToTurns(text: string): TurnSegment[] {
+  const turns: TurnSegment[] = [];
+  let id = 0;
+  const speakerMap = new Map<string, number>();
+  let nextSp = 1;
+
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const geminiM = trimmed.match(/^\[화자\s*(\w+)\]\s*(.+)$/);
+    if (geminiM) {
+      turns.push({ id: id++, sp: parseInt(geminiM[1]) || 1, t: "", text: geminiM[2].trim() });
+      continue;
+    }
+
+    const colonM = trimmed.match(/^([^:]{1,15}):\s*(.+)$/);
+    if (colonM) {
+      const name = colonM[1].trim();
+      if (!speakerMap.has(name)) speakerMap.set(name, nextSp++);
+      turns.push({ id: id++, sp: speakerMap.get(name)!, t: "", text: colonM[2].trim() });
+      continue;
+    }
+
+    turns.push({ id: id++, sp: 1, t: "", text: trimmed });
+  }
+  return turns;
+}
+
 // AnalysisResult sections → NoteRecord 필드 매핑
 function applyAnalysis(note: NoteRecord, result: AnalysisResult): NoteRecord {
   const sections = result.sections ?? [];
@@ -285,7 +315,8 @@ export default function Home() {
         date: data.date || new Date().toLocaleDateString("ko-KR"),
         attendees: "미정",
       });
-      saveNote(applyAnalysis({ ...note, title: data.title || note.title }, result));
+      const textTurns = parseTextToTurns(data.text);
+      saveNote(applyAnalysis({ ...note, segments: textTurns, title: data.title || note.title }, result));
       setAppMode("review");
       setScreen("live");
     } catch (err) {
@@ -313,6 +344,8 @@ export default function Home() {
       setAudioProgress({ current: 0, total: chunks.length });
 
       const texts: string[] = [];
+      const allTurns: TurnSegment[] = [];
+      let turnId = 0;
       let prevContext: { sp: number; text: string }[] = [];
 
       for (let i = 0; i < chunks.length; i++) {
@@ -333,8 +366,17 @@ export default function Home() {
         console.log(`[audio] 청크 ${i + 1}/${chunks.length}:`, chunkText.slice(0, 80));
         if (chunkText) texts.push(chunkText);
 
-        // 다음 청크의 화자 연속성을 위한 컨텍스트 유지
+        // 세그먼트를 TurnSegment로 수집 (트랜스크립트 패널 표시용)
         const segs: { clovaLabel: string; text: string }[] = sttJson.segments ?? [];
+        const chunkOffsetSecs = i * 60;
+        for (const seg of segs) {
+          const sp = parseInt(seg.clovaLabel) || 1;
+          const mm = String(Math.floor(chunkOffsetSecs / 60)).padStart(2, "0");
+          const ss = String(chunkOffsetSecs % 60).padStart(2, "0");
+          allTurns.push({ id: turnId++, sp, t: `${mm}:${ss}`, text: seg.text });
+        }
+
+        // 다음 청크의 화자 연속성을 위한 컨텍스트 유지
         prevContext = segs.slice(-3).map((s) => ({ sp: parseInt(s.clovaLabel) || 1, text: s.text }));
 
         setAudioProgress({ current: i + 1, total: chunks.length });
@@ -346,7 +388,7 @@ export default function Home() {
         date: new Date().toLocaleDateString("ko-KR"),
         attendees: "미정",
       });
-      const updated = applyAnalysis({ ...note, title: file.name.replace(/\.[^.]+$/, "") }, result);
+      const updated = applyAnalysis({ ...note, segments: allTurns, title: file.name.replace(/\.[^.]+$/, "") }, result);
       saveNote(updated);
       setAppMode("review");
       setScreen("live");
@@ -436,7 +478,7 @@ export default function Home() {
         mode={appMode}
         isRecording={stt.isRecording}
         elapsedMs={stt.elapsedMs}
-        turns={stt.turns}
+        turns={currentNote?.entryMethod === "live" || !currentNote?.entryMethod ? stt.turns : (currentNote?.segments ?? [])}
         keywords={keywords}
         participants={stt.participants}
         pendingTurnCount={pendingTurnCount}
