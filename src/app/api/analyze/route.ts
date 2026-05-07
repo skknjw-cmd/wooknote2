@@ -3,12 +3,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const maxDuration = 120;
 
-// gemini-2.0-flash first: fast (~5s), reliable JSON output.
-// 2.5 models used as fallback only — thinking mode makes them too slow.
+// 2.5-flash-lite: best quality/speed tradeoff for structured meeting analysis.
+// 2.0-flash as fallback when 2.5 is overloaded.
 const MODEL_CHAIN = [
-  "gemini-2.0-flash",
   "gemini-2.5-flash-lite",
-  "gemini-2.5-flash",
+  "gemini-2.0-flash",
 ];
 
 // Two attempts per model max to stay well under the 120s limit.
@@ -60,9 +59,7 @@ async function callGemini(
     {
       model: modelName,
       generationConfig: {
-        temperature: 0.1,
-        topP: 0.95,
-        topK: 40,
+        temperature: 0,
         maxOutputTokens: 8192,
       },
     },
