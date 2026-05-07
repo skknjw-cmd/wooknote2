@@ -2,14 +2,17 @@
 
 import React, { useState } from "react";
 import { getApiKey, setApiKey } from "@/lib/apiKey";
+import { isFolderPickerSupported } from "@/lib/folderStorage";
 
 interface ApiKeyModalProps {
   /** true면 닫기 불가 (최초 설정) */
   required?: boolean;
   onClose: () => void;
+  folderName?: string | null;
+  onPickFolder?: () => void;
 }
 
-export default function ApiKeyModal({ required = false, onClose }: ApiKeyModalProps) {
+export default function ApiKeyModal({ required = false, onClose, folderName, onPickFolder }: ApiKeyModalProps) {
   const [value, setValue] = useState(getApiKey());
   const [saved, setSaved] = useState(false);
   const [show, setShow] = useState(false);
@@ -115,6 +118,30 @@ export default function ApiKeyModal({ required = false, onClose }: ApiKeyModalPr
           에서 무료로 발급받을 수 있습니다.
           키는 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
         </div>
+
+        {/* Folder picker (Chrome/Edge only) */}
+        {isFolderPickerSupported() && (
+          <div style={{
+            borderTop: "1px solid var(--border)",
+            paddingTop: 14, marginBottom: 16,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginBottom: 8 }}>
+              저장 폴더
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13 }}>📁</span>
+              <span style={{ fontSize: 13, color: folderName ? "var(--ink)" : "var(--ink-4)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {folderName ?? "미지정"}
+              </span>
+              <button className="btn" onClick={onPickFolder} style={{ flexShrink: 0, fontSize: 12, padding: "5px 10px" }}>
+                폴더 선택
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 6 }}>
+              노트 저장 시 지정 폴더에 마크다운 파일(.md)로 자동 저장됩니다.
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

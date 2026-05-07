@@ -19,6 +19,8 @@ import {
 import { apiKeyHeader, hasApiKey } from "@/lib/apiKey";
 import { chunkAudioFile } from "@/lib/audioChunk";
 import { useOfflineSTT } from "@/hooks/useOfflineSTT";
+import { saveNote as dbSave, getNotes as dbGetNotes } from "@/lib/db";
+import { saveNoteToFolder, pickSaveFolder, getSaveFolderName } from "@/lib/folderStorage";
 import type {
   NoteRecord,
   Participant,
@@ -154,11 +156,19 @@ export default function Home() {
   const [currentNote, setCurrentNote] = useState<NoteRecord | null>(null);
   const [notes, setNotes] = useState<NoteRecord[]>([]);
 
+  const [folderName, setFolderName] = useState<string | null>(null);
+
   const [pendingTurnCount, setPendingTurnCount] = useState(0);
   const prevTurnsLen = useRef(0);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioProgress, setAudioProgress] = useState<{ current: number; total: number } | undefined>();
   const [analyzing, setAnalyzing] = useState(false);
+
+  useEffect(() => {
+    dbGetNotes().then((loaded) => { if (loaded.length) setNotes(loaded); });
+    getSaveFolderName().then(setFolderName);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const added = stt.turns.length - prevTurnsLen.current;
@@ -179,6 +189,13 @@ export default function Home() {
       const exists = prev.find((n) => n.id === updated.id);
       return exists ? prev.map((n) => (n.id === updated.id ? updated : n)) : [updated, ...prev];
     });
+    dbSave(updated).catch(console.error);
+    saveNoteToFolder(updated).catch(console.error);
+  }
+
+  async function handlePickFolder() {
+    const name = await pickSaveFolder();
+    if (name) setFolderName(name);
   }
 
   // ── Mode selection ──────────────────────────────────────────────────────────
@@ -440,7 +457,7 @@ export default function Home() {
           onOpenNote={handleOpenNote}
           onSettings={() => setShowApiKey(true)}
         />
-        {showApiKey && <ApiKeyModal onClose={() => setShowApiKey(false)} />}
+        {showApiKey && <ApiKeyModal onClose={() => setShowApiKey(false)} folderName={folderName} onPickFolder={handlePickFolder} />}
       </>
     );
   }
@@ -498,7 +515,7 @@ export default function Home() {
       {showExport && (
         <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />
       )}
-      {showApiKey && <ApiKeyModal onClose={() => setShowApiKey(false)} />}
+      {showApiKey && <ApiKeyModal onClose={() => setShowApiKey(false)} folderName={folderName} onPickFolder={handlePickFolder} />}
     </>
   );
 }

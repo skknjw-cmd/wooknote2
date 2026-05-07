@@ -13,14 +13,12 @@ interface NoteListProps {
 }
 
 export default function NoteList({ notes, currentId, collapsed, onSelect, onNew, onSettings }: NoteListProps) {
-  const now = Date.now();
   const todayStart = new Date().setHours(0, 0, 0, 0);
-  const yesterdayStart = todayStart - 86400000;
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-  const live = notes.filter((n) => n.audioDuration === 0 && !n.memo);
-  const today = notes.filter((n) => n.createdAt >= todayStart && n.audioDuration > 0);
-  const yesterday = notes.filter((n) => n.createdAt >= yesterdayStart && n.createdAt < todayStart);
-  const older = notes.filter((n) => n.createdAt < yesterdayStart);
+  const recent = notes.filter((n) => n.createdAt >= weekAgo);
+  const today = recent.filter((n) => n.createdAt >= todayStart);
+  const thisWeek = recent.filter((n) => n.createdAt < todayStart);
 
   function formatTime(ms: number): string {
     const d = new Date(ms);
@@ -109,10 +107,8 @@ export default function NoteList({ notes, currentId, collapsed, onSelect, onNew,
       </div>
 
       <div className="sb-list">
-        {renderSection("라이브", live, true)}
         {renderSection("오늘", today)}
-        {renderSection("어제", yesterday)}
-        {renderSection("이전", older)}
+        {renderSection("이번 주", thisWeek)}
         {notes.length === 0 && (
           <div style={{ padding: "24px 12px", textAlign: "center", color: "var(--ink-4)", fontSize: 12 }}>
             아직 노트가 없습니다
