@@ -33,6 +33,8 @@ interface AppShellProps {
   onUpdateNote?: (note: NoteRecord) => void;
   onSettings?: () => void;
   analyzing?: boolean;
+  folderName?: string | null;
+  onPickFolder?: () => void;
 }
 
 export default function AppShell({
@@ -60,6 +62,8 @@ export default function AppShell({
   onUpdateNote,
   onSettings,
   analyzing = false,
+  folderName,
+  onPickFolder,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
@@ -139,6 +143,8 @@ export default function AppShell({
         onSelect={onSelectNote}
         onNew={onNewNote}
         onSettings={onSettings}
+        folderName={folderName}
+        onPickFolder={onPickFolder}
       />
 
       {/* Main area: transcript + note doc */}

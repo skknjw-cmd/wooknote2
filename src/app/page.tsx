@@ -511,6 +511,8 @@ export default function Home() {
         onUpdateNote={saveNote}
         onSettings={() => setShowApiKey(true)}
         analyzing={analyzing}
+        folderName={folderName}
+        onPickFolder={handlePickFolder}
       />
       {showExport && (
         <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />

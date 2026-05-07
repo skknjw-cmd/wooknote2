@@ -10,9 +10,11 @@ interface NoteListProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onSettings?: () => void;
+  folderName?: string | null;
+  onPickFolder?: () => void;
 }
 
-export default function NoteList({ notes, currentId, collapsed, onSelect, onNew, onSettings }: NoteListProps) {
+export default function NoteList({ notes, currentId, collapsed, onSelect, onNew, onSettings, folderName, onPickFolder }: NoteListProps) {
   const todayStart = new Date().setHours(0, 0, 0, 0);
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
@@ -115,6 +117,27 @@ export default function NoteList({ notes, currentId, collapsed, onSelect, onNew,
           </div>
         )}
       </div>
+
+      {onPickFolder && (
+        <div
+          onClick={onPickFolder}
+          title={folderName ? `저장 폴더: ${folderName}` : "저장 폴더 지정"}
+          style={{
+            display: "flex", alignItems: "center", gap: 7,
+            padding: "7px 12px", cursor: "pointer",
+            borderTop: "1px solid var(--border)",
+            fontSize: 12, color: folderName ? "var(--ink-3)" : "var(--ink-4)",
+            userSelect: "none",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+        >
+          <span style={{ fontSize: 14 }}>📁</span>
+          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {folderName ?? "저장 폴더 지정"}
+          </span>
+        </div>
+      )}
 
       <div className="sb-foot">
         <div className="sb-avatar">A</div>
