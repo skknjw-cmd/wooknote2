@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-// Primary → fallback chain. Tried in order when the primary is overloaded.
+// gemini-2.0-flash first: fast (~5s), reliable JSON output.
+// 2.5 models used as fallback only — thinking mode makes them too slow.
 const MODEL_CHAIN = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
   "gemini-2.0-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
 ];
 
-// Retry delays in ms. Three attempts per model.
-const RETRY_DELAYS_MS = [0, 2000, 5000];
+// Two attempts per model max to stay well under the 120s limit.
+const RETRY_DELAYS_MS = [0, 3000];
 
 // HTTP status codes that are worth retrying (transient).
 const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
