@@ -313,7 +313,11 @@ export default function Home() {
   async function handleRegen() {
     resetPending();
     const note = currentNote ?? emptyNote("live");
-    await analyzeFromTurns(note, stt.turns, stt.participants);
+    const turns = note.entryMethod === "live" || !note.entryMethod
+      ? stt.turns
+      : (note.segments ?? []);
+    const participants = stt.participants.length > 0 ? stt.participants : note.participants;
+    await analyzeFromTurns(note, turns, participants);
   }
 
   // ── Text input mode ─────────────────────────────────────────────────────────
