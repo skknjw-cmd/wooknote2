@@ -56,12 +56,32 @@ function buildPrompt(
 [화자 2] 발화 내용`;
 }
 
+// Gemini가 오디오 인식 실패 시 프롬프트·타임스탬프를 반복 출력하는 환각 패턴
+const HALLUCINATION_PATTERNS = [
+  /다음 회의 오디오 클립을/,
+  /이 오디오 클립은 약\s*\d+초/,
+  /화자를 분리해주세요/,
+  /출력 형식 \(다른 설명/,
+  /엄격한 규칙:/,
+  /00:\d{2}:\d{2}\.\d{3}/,  // 오디오 플레이어 타임스탬프 형식
+];
+
+function isHallucinatedText(text: string): boolean {
+  if (text.length > 250) return true;
+  return HALLUCINATION_PATTERNS.some((p) => p.test(text));
+}
+
 function parseGeminiOutput(raw: string): ApiSegment[] {
   const segments: ApiSegment[] = [];
   for (const line of raw.split("\n")) {
     const m = line.trim().match(/^\[화자\s*(\w+)\]\s*(.+)$/);
     if (!m) continue;
-    segments.push({ clovaLabel: m[1], text: m[2].trim() });
+    const text = m[2].trim();
+    if (isHallucinatedText(text)) {
+      console.warn("[stt-gemini] 환각 세그먼트 제거:", text.slice(0, 60));
+      continue;
+    }
+    segments.push({ clovaLabel: m[1], text });
 
     // 루프 탐지: period 1~12 사이클 반복 검사
     const n = segments.length;

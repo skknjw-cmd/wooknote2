@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import type { TurnSegment, Participant } from "@/types/meeting";
 import { apiKeyHeader } from "@/lib/apiKey";
+import { encodeWav } from "@/lib/audioChunk";
 
 type ModelStatus = "idle" | "loading" | "ready";
 
@@ -50,8 +51,21 @@ export function useOfflineSTT(): STTState {
   async function processChunk(blob: Blob, chunkStartMs: number) {
     if (!blob.size) return;
     try {
+      // WebM → WAV 변환: Gemini가 WAV를 더 안정적으로 처리 (WebM 환각 현상 방지)
+      let sendBlob = blob;
+      try {
+        const arrayBuf = await blob.arrayBuffer();
+        const audioCtx = new AudioContext({ sampleRate: 16000 });
+        const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
+        await audioCtx.close();
+        const pcm = audioBuf.getChannelData(0);
+        sendBlob = new Blob([encodeWav(pcm, 16000)], { type: "audio/wav" });
+      } catch {
+        console.warn("[STT] WAV 변환 실패, WebM 원본 사용");
+      }
+
       const form = new FormData();
-      form.append("media", blob);
+      form.append("media", sendBlob, "chunk.wav");
       if (participantsRef.current.length > 0) {
         form.append("attendeeCount", String(participantsRef.current.length));
         const names = participantsRef.current
