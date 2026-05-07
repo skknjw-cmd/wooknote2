@@ -280,7 +280,8 @@ export default function Home() {
     setAnalyzing(true);
     try {
       const result = await callAnalyze(transcript, meetingInfo);
-      saveNote(applyAnalysis({ ...note, participants }, result));
+      // segments를 항상 저장 → 다시 정리 시 transcript 재사용 가능
+      saveNote(applyAnalysis({ ...note, participants, segments: turns }, result));
     } catch (err) {
       console.error("[analyze] 실패:", err);
       alert("AI 분석 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
@@ -313,9 +314,8 @@ export default function Home() {
   async function handleRegen() {
     resetPending();
     const note = currentNote ?? emptyNote("live");
-    const turns = note.entryMethod === "live" || !note.entryMethod
-      ? stt.turns
-      : (note.segments ?? []);
+    // note.segments에 저장된 transcript 우선 사용, 없으면 live STT turns 사용
+    const turns = (note.segments?.length ?? 0) > 0 ? note.segments! : stt.turns;
     const participants = stt.participants.length > 0 ? stt.participants : note.participants;
     await analyzeFromTurns(note, turns, participants);
   }
