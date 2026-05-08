@@ -290,6 +290,10 @@ export default function NoteDocument({
   const data = { ...EMPTY_NOTE, ...note };
 
   // ── 로컬 편집 상태 ─────────────────────────────────────────
+  const [summaryBullets, setSummaryBullets] = useState<string[]>(data.summaryBullets ?? []);
+  const [discussions, setDiscussions] = useState<DiscussionItem[]>(
+    note?.discussions?.length ? note.discussions : parseContextToDiscussions(data.context || "")
+  );
   const [decisions, setDecisions] = useState<string[]>(data.decisions ?? []);
   const [actions, setActions] = useState(data.actions ?? []);
   const [questions, setQuestions] = useState<string[]>(data.questions ?? []);
@@ -297,12 +301,14 @@ export default function NoteDocument({
 
   // note prop 변경 시 동기화 — id 변경(노트 전환) 또는 분석 결과 도착 시
   useEffect(() => {
+    setSummaryBullets(note?.summaryBullets ?? []);
+    setDiscussions(note?.discussions?.length ? note.discussions : parseContextToDiscussions(note?.context || ""));
     setDecisions(note?.decisions ?? []);
     setActions(note?.actions ?? []);
     setQuestions(note?.questions ?? []);
     setNextAgenda(note?.nextAgenda ?? []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note?.id, note?.decisions, note?.actions, note?.questions, note?.nextAgenda]);
+  }, [note?.id, note?.summaryBullets, note?.discussions, note?.context, note?.decisions, note?.actions, note?.questions, note?.nextAgenda]);
 
   // ── 드래프트 열림 상태 ─────────────────────────────────────
   const [addingDecision, setAddingDecision] = useState(false);
@@ -314,6 +320,14 @@ export default function NoteDocument({
   const [editingDecision, setEditingDecision] = useState<number | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<number | null>(null);
   const [editingAgenda, setEditingAgenda] = useState<number | null>(null);
+
+  function updateDiscussion(i: number, field: keyof DiscussionItem, value: string) {
+    setDiscussions((prev) => {
+      const next = prev.map((item, j) => j === i ? { ...item, [field]: value } : item);
+      if (note) onUpdateNote?.({ ...note, discussions: next });
+      return next;
+    });
+  }
 
   function push<T>(setter: React.Dispatch<React.SetStateAction<T[]>>, field: keyof NoteRecord, item: T) {
     setter((prev) => {
@@ -456,9 +470,22 @@ export default function NoteDocument({
                 </svg>
                 AI 분석 중...
               </p>
-            ) : data.summaryBullets && data.summaryBullets.length > 0 ? (
+            ) : summaryBullets.length > 0 ? (
               <ul>
-                {data.summaryBullets.map((b, i) => <li key={i}>{b}</li>)}
+                {summaryBullets.map((b, i) => (
+                  <li
+                    key={i}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onBlur={(e) => {
+                      const v = e.currentTarget.textContent?.trim() || "";
+                      const next = summaryBullets.map((x, j) => j === i ? v : x).filter(Boolean);
+                      setSummaryBullets(next);
+                      if (note) onUpdateNote?.({ ...note, summaryBullets: next });
+                    }}
+                    style={{ outline: "none", cursor: "text" }}
+                  >{b}</li>
+                ))}
               </ul>
             ) : (
               <p style={{ color: "var(--ink-4)", fontSize: 13 }}>
@@ -474,62 +501,71 @@ export default function NoteDocument({
             <span className="ico"><IconFolder /></span>
             주요 논의 내용
           </div>
-          {(() => {
-            const items: DiscussionItem[] =
-              note?.discussions?.length
-                ? note.discussions
-                : parseContextToDiscussions(data.context || "");
-            if (items.length > 0) {
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                  {items.map((item: DiscussionItem, i: number) => (
-                    <div key={i} style={{
-                      borderLeft: "3px solid var(--border-strong)",
-                      paddingLeft: 12,
-                      paddingBottom: 4,
-                      display: "flex", flexDirection: "column", gap: 6,
-                    }}>
-                      {item.title && (
-                        <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>
-                          {item.title}
-                        </div>
-                      )}
-                      {item.background && (
-                        <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
-                          <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>배경</span>
-                          <span>{item.background}</span>
-                        </div>
-                      )}
-                      {item.discussion && (
-                        <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
-                          <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>논의</span>
-                          <span>{item.discussion}</span>
-                        </div>
-                      )}
-                      {item.conclusion && (
-                        <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
-                          <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>결론</span>
-                          <span>{item.conclusion}</span>
-                        </div>
-                      )}
+          {discussions.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {discussions.map((item: DiscussionItem, i: number) => (
+                <div key={i} style={{
+                  borderLeft: "3px solid var(--border-strong)",
+                  paddingLeft: 12,
+                  paddingBottom: 4,
+                  display: "flex", flexDirection: "column", gap: 6,
+                }}>
+                  {item.title !== undefined && (
+                    <div
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={(e) => updateDiscussion(i, "title", e.currentTarget.textContent?.trim() || "")}
+                      style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", outline: "none", cursor: "text" }}
+                    >{item.title}</div>
+                  )}
+                  {item.background !== undefined && (
+                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>배경</span>
+                      <span
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => updateDiscussion(i, "background", e.currentTarget.textContent?.trim() || "")}
+                        style={{ outline: "none", cursor: "text", flex: 1 }}
+                      >{item.background}</span>
                     </div>
-                  ))}
+                  )}
+                  {item.discussion !== undefined && (
+                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>논의</span>
+                      <span
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => updateDiscussion(i, "discussion", e.currentTarget.textContent?.trim() || "")}
+                        style={{ outline: "none", cursor: "text", flex: 1 }}
+                      >{item.discussion}</span>
+                    </div>
+                  )}
+                  {item.conclusion !== undefined && (
+                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>결론</span>
+                      <span
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => updateDiscussion(i, "conclusion", e.currentTarget.textContent?.trim() || "")}
+                        style={{ outline: "none", cursor: "text", flex: 1 }}
+                      >{item.conclusion}</span>
+                    </div>
+                  )}
                 </div>
-              );
-            }
-            return (
-              <p
-                contentEditable
-                suppressContentEditableWarning
-                onBlur={(e) => {
-                  if (note) onUpdateNote?.({ ...note, context: e.currentTarget.textContent ?? "" });
-                }}
-                style={{ outline: "none", minHeight: 24, whiteSpace: "pre-wrap" }}
-              >
-                {data.context || ""}
-              </p>
-            );
-          })()}
+              ))}
+            </div>
+          ) : (
+            <p
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={(e) => {
+                if (note) onUpdateNote?.({ ...note, context: e.currentTarget.textContent ?? "" });
+              }}
+              style={{ outline: "none", minHeight: 24, whiteSpace: "pre-wrap" }}
+            >
+              {data.context || ""}
+            </p>
+          )}
         </div>
 
         {/* Block 3: 결정사항 */}
@@ -607,14 +643,39 @@ export default function NoteDocument({
                       {a.what}
                     </div>
                     <div className="row2">
-                      {a.who && <span className="who">@{a.who}</span>}
-                      {a.when && <span className="when">{a.when}</span>}
+                      <span
+                        className="who"
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => {
+                          const v = (e.currentTarget.textContent?.trim() || "").replace(/^@/, "");
+                          update(setActions, "actions", i, { ...a, who: v });
+                        }}
+                        style={{ outline: "none", cursor: "text", minWidth: 20 }}
+                        data-placeholder="@담당자"
+                      >{a.who ? `@${a.who}` : ""}</span>
+                      <span
+                        className="when"
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => {
+                          const v = e.currentTarget.textContent?.trim() || "";
+                          update(setActions, "actions", i, { ...a, when: v });
+                        }}
+                        style={{ outline: "none", cursor: "text", minWidth: 20 }}
+                        data-placeholder="기한"
+                      >{a.when || ""}</span>
                     </div>
-                    {a.notes && (
-                      <div style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 2 }}>
-                        완료기준: {a.notes}
-                      </div>
-                    )}
+                    <div
+                      contentEditable
+                      suppressContentEditableWarning
+                      onBlur={(e) => {
+                        const v = (e.currentTarget.textContent?.trim() || "").replace(/^완료기준:\s*/, "");
+                        update(setActions, "actions", i, { ...a, notes: v || undefined } as typeof a);
+                      }}
+                      style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 2, outline: "none", cursor: "text", minHeight: 16 }}
+                      data-placeholder="완료기준"
+                    >{a.notes ? `완료기준: ${a.notes}` : ""}</div>
                   </div>
                 </div>
               ))}
