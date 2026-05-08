@@ -61,7 +61,20 @@ function noteToMarkdown(note: NoteRecord): string {
     lines.push("");
   }
 
-  if (note.context) {
+  // discussions가 있으면 구조화된 형태로, 없으면 context 평문 그대로
+  const discussions = note.discussions;
+  if (discussions && discussions.length > 0) {
+    lines.push("## 주요 논의 내용");
+    lines.push("");
+    discussions.forEach((item, i) => {
+      if (i > 0) lines.push("");
+      if (item.title) lines.push(`### ${item.title}`);
+      if (item.background) lines.push(`**배경** ${item.background}`);
+      if (item.discussion) lines.push(`**논의** ${item.discussion}`);
+      if (item.conclusion) lines.push(`**결론** ${item.conclusion}`);
+    });
+    lines.push("");
+  } else if (note.context) {
     lines.push("## 주요 논의 내용");
     lines.push(note.context);
     lines.push("");
