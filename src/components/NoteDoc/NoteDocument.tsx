@@ -438,12 +438,13 @@ export default function NoteDocument({
             주요 논의 내용
           </div>
           {note?.discussions?.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               {note.discussions.map((item: DiscussionItem, i: number) => (
                 <div key={i} style={{
                   borderLeft: "3px solid var(--border-strong)",
                   paddingLeft: 12,
-                  display: "flex", flexDirection: "column", gap: 4,
+                  paddingBottom: 4,
+                  display: "flex", flexDirection: "column", gap: 6,
                 }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>
                     {item.title}
