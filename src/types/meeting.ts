@@ -123,6 +123,7 @@ export type NoteRecord = {
   questions: string[];
   nextAgenda: string[];
   context: string;
+  discussions?: DiscussionItem[];
   quotes?: QuoteCard[]; // 타임스탬프 앵커 인용 목록
 };
 
@@ -151,6 +152,13 @@ export type NoteBlock = {
   source: "auto" | "manual"; // manual = 사용자 수정 시 자동 갱신 보호
   updatedAt: string; // ISO
   hidden?: boolean;
+};
+
+export type DiscussionItem = {
+  title: string;
+  background?: string;
+  discussion?: string;
+  conclusion?: string;
 };
 
 export type QuoteCard = {

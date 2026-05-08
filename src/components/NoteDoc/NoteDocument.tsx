@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import type { NoteRecord, Participant } from "@/types/meeting";
+import type { NoteRecord, Participant, DiscussionItem } from "@/types/meeting";
 
 interface NoteDocumentProps {
   note: NoteRecord | null;
@@ -437,16 +437,50 @@ export default function NoteDocument({
             <span className="ico"><IconFolder /></span>
             주요 논의 내용
           </div>
-          <p
-            contentEditable
-            suppressContentEditableWarning
-            onBlur={(e) => {
-              if (note) onUpdateNote?.({ ...note, context: e.currentTarget.textContent ?? "" });
-            }}
-            style={{ outline: "none", minHeight: 24, whiteSpace: "pre-wrap" }}
-          >
-            {data.context || ""}
-          </p>
+          {note?.discussions?.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {note.discussions.map((item: DiscussionItem, i: number) => (
+                <div key={i} style={{
+                  borderLeft: "3px solid var(--border-strong)",
+                  paddingLeft: 12,
+                  display: "flex", flexDirection: "column", gap: 4,
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>
+                    {item.title}
+                  </div>
+                  {item.background && (
+                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>배경</span>
+                      <span>{item.background}</span>
+                    </div>
+                  )}
+                  {item.discussion && (
+                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>논의</span>
+                      <span>{item.discussion}</span>
+                    </div>
+                  )}
+                  {item.conclusion && (
+                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>결론</span>
+                      <span>{item.conclusion}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={(e) => {
+                if (note) onUpdateNote?.({ ...note, context: e.currentTarget.textContent ?? "" });
+              }}
+              style={{ outline: "none", minHeight: 24, whiteSpace: "pre-wrap" }}
+            >
+              {data.context || ""}
+            </p>
+          )}
         </div>
 
         {/* Block 3: 결정사항 */}

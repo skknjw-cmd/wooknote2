@@ -27,6 +27,7 @@ import type {
   EntryMethod as InputMode,
   AnalysisResult,
   TurnSegment,
+  DiscussionItem,
 } from "@/types/meeting";
 
 type AppScreen = "mode-select" | "roster" | "live" | "text" | "audio" | "video";
@@ -82,6 +83,23 @@ function parseTextToTurns(text: string): TurnSegment[] {
   return turns;
 }
 
+function parseDiscussion(title: string, description: string): DiscussionItem {
+  const item: DiscussionItem = { title };
+  const parts: Record<string, string[]> = { background: [], discussion: [], conclusion: [] };
+  let current = "";
+  for (const line of description.split("\n")) {
+    if (/^배경[:：]/.test(line)) { current = "background"; parts.background.push(line.replace(/^배경[:：]\s*/, "")); }
+    else if (/^논의[:：]/.test(line)) { current = "discussion"; parts.discussion.push(line.replace(/^논의[:：]\s*/, "")); }
+    else if (/^결론[:：]/.test(line)) { current = "conclusion"; parts.conclusion.push(line.replace(/^결론[:：]\s*/, "")); }
+    else if (current) { parts[current].push(line); }
+  }
+  if (parts.background.length) item.background = parts.background.join(" ").trim();
+  if (parts.discussion.length) item.discussion = parts.discussion.join(" ").trim();
+  if (parts.conclusion.length) item.conclusion = parts.conclusion.join(" ").trim();
+  if (!item.background && !item.discussion && !item.conclusion) item.background = description;
+  return item;
+}
+
 // AnalysisResult sections → NoteRecord 필드 매핑
 function applyAnalysis(note: NoteRecord, result: AnalysisResult): NoteRecord {
   const sections = result.sections ?? [];
@@ -115,11 +133,19 @@ function applyAnalysis(note: NoteRecord, result: AnalysisResult): NoteRecord {
 
   console.log("[applyAnalysis] decisions:", decisions, "actions:", actions.length, "questions:", questions, "nextAgenda:", nextAgenda);
 
+  const discussionSection = find("논의 내용", "논의내용", "맥락", "배경");
+  const discussionItems = discussionSection?.type === "numbered"
+    ? (Array.isArray(discussionSection.content) ? discussionSection.content : [])
+        .filter((c) => c.title || c.description)
+        .map((c) => parseDiscussion(c.title || "", c.description || ""))
+    : undefined;
+
   return {
     ...note,
     title: result.title || note.title,
     summaryBullets: toStrings(find("핵심요약", "요약")),
     context: toStrings(find("논의 내용", "논의내용", "맥락", "배경")).join("\n\n") || note.context,
+    discussions: discussionItems ?? note.discussions,
     decisions,
     actions,
     questions,
