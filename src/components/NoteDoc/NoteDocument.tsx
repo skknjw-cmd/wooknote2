@@ -3,6 +3,43 @@
 import React, { useState, useEffect, useRef } from "react";
 import type { NoteRecord, Participant, DiscussionItem } from "@/types/meeting";
 
+// context 텍스트("제목: 배경: ...\n논의: ...\n결론: ...") → DiscussionItem[]
+function parseContextToDiscussions(context: string): DiscussionItem[] {
+  if (!context.trim()) return [];
+  const blocks = context.split(/\n\n+/);
+  return blocks.map((block) => {
+    // 첫 줄 또는 첫 `:` 이전이 제목, 나머지가 description
+    const firstNewline = block.indexOf("\n");
+    const firstColon = block.indexOf(": ");
+    let title = "";
+    let description = "";
+    if (firstNewline !== -1 && (firstNewline < firstColon || firstColon === -1)) {
+      title = block.slice(0, firstNewline).trim();
+      description = block.slice(firstNewline + 1).trim();
+    } else if (firstColon !== -1) {
+      title = block.slice(0, firstColon).trim();
+      description = block.slice(firstColon + 2).trim();
+    } else {
+      description = block.trim();
+    }
+    // 배경/논의/결론 파싱
+    const item: DiscussionItem = { title };
+    const parts: Record<string, string[]> = { background: [], discussion: [], conclusion: [] };
+    let cur = "";
+    for (const line of description.split("\n")) {
+      if (/^배경[:：]/.test(line)) { cur = "background"; parts.background.push(line.replace(/^배경[:：]\s*/, "")); }
+      else if (/^논의[:：]/.test(line)) { cur = "discussion"; parts.discussion.push(line.replace(/^논의[:：]\s*/, "")); }
+      else if (/^결론[:：]/.test(line)) { cur = "conclusion"; parts.conclusion.push(line.replace(/^결론[:：]\s*/, "")); }
+      else if (cur) parts[cur].push(line);
+    }
+    if (parts.background.length) item.background = parts.background.join(" ").trim();
+    if (parts.discussion.length) item.discussion = parts.discussion.join(" ").trim();
+    if (parts.conclusion.length) item.conclusion = parts.conclusion.join(" ").trim();
+    if (!item.background && !item.discussion && !item.conclusion) item.background = description;
+    return item;
+  }).filter((item) => item.title || item.background || item.discussion || item.conclusion);
+}
+
 interface NoteDocumentProps {
   note: NoteRecord | null;
   mode: "live" | "review";
@@ -437,51 +474,62 @@ export default function NoteDocument({
             <span className="ico"><IconFolder /></span>
             주요 논의 내용
           </div>
-          {note?.discussions?.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {note.discussions.map((item: DiscussionItem, i: number) => (
-                <div key={i} style={{
-                  borderLeft: "3px solid var(--border-strong)",
-                  paddingLeft: 12,
-                  paddingBottom: 4,
-                  display: "flex", flexDirection: "column", gap: 6,
-                }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>
-                    {item.title}
-                  </div>
-                  {item.background && (
-                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
-                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>배경</span>
-                      <span>{item.background}</span>
+          {(() => {
+            const items: DiscussionItem[] =
+              note?.discussions?.length
+                ? note.discussions
+                : parseContextToDiscussions(data.context || "");
+            if (items.length > 0) {
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  {items.map((item: DiscussionItem, i: number) => (
+                    <div key={i} style={{
+                      borderLeft: "3px solid var(--border-strong)",
+                      paddingLeft: 12,
+                      paddingBottom: 4,
+                      display: "flex", flexDirection: "column", gap: 6,
+                    }}>
+                      {item.title && (
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)" }}>
+                          {item.title}
+                        </div>
+                      )}
+                      {item.background && (
+                        <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                          <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>배경</span>
+                          <span>{item.background}</span>
+                        </div>
+                      )}
+                      {item.discussion && (
+                        <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                          <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>논의</span>
+                          <span>{item.discussion}</span>
+                        </div>
+                      )}
+                      {item.conclusion && (
+                        <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
+                          <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>결론</span>
+                          <span>{item.conclusion}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {item.discussion && (
-                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
-                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>논의</span>
-                      <span>{item.discussion}</span>
-                    </div>
-                  )}
-                  {item.conclusion && (
-                    <div style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", gap: 6 }}>
-                      <span style={{ color: "var(--ink-4)", flexShrink: 0, fontWeight: 500 }}>결론</span>
-                      <span>{item.conclusion}</span>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p
-              contentEditable
-              suppressContentEditableWarning
-              onBlur={(e) => {
-                if (note) onUpdateNote?.({ ...note, context: e.currentTarget.textContent ?? "" });
-              }}
-              style={{ outline: "none", minHeight: 24, whiteSpace: "pre-wrap" }}
-            >
-              {data.context || ""}
-            </p>
-          )}
+              );
+            }
+            return (
+              <p
+                contentEditable
+                suppressContentEditableWarning
+                onBlur={(e) => {
+                  if (note) onUpdateNote?.({ ...note, context: e.currentTarget.textContent ?? "" });
+                }}
+                style={{ outline: "none", minHeight: 24, whiteSpace: "pre-wrap" }}
+              >
+                {data.context || ""}
+              </p>
+            );
+          })()}
         </div>
 
         {/* Block 3: 결정사항 */}

@@ -133,12 +133,14 @@ function applyAnalysis(note: NoteRecord, result: AnalysisResult): NoteRecord {
 
   console.log("[applyAnalysis] decisions:", decisions, "actions:", actions.length, "questions:", questions, "nextAgenda:", nextAgenda);
 
-  const discussionSection = find("논의 내용", "논의내용", "맥락", "배경");
+  const discussionSection = find("논의 내용", "논의내용", "맥락", "배경", "주요 논의");
+  console.log("[applyAnalysis] discussionSection:", discussionSection?.name, "items:", discussionSection?.content?.length);
   const discussionItems = discussionSection?.type === "numbered"
     ? (Array.isArray(discussionSection.content) ? discussionSection.content : [])
         .filter((c) => c.title || c.description)
         .map((c) => parseDiscussion(c.title || "", c.description || ""))
     : undefined;
+  console.log("[applyAnalysis] discussionItems:", discussionItems?.length, discussionItems?.[0]);
 
   return {
     ...note,
