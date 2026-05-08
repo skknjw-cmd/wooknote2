@@ -443,7 +443,7 @@ export default function NoteDocument({
             onBlur={(e) => {
               if (note) onUpdateNote?.({ ...note, context: e.currentTarget.textContent ?? "" });
             }}
-            style={{ outline: "none", minHeight: 24 }}
+            style={{ outline: "none", minHeight: 24, whiteSpace: "pre-wrap" }}
           >
             {data.context || ""}
           </p>
