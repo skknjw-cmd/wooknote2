@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { TurnSegment, Participant } from "@/types/meeting";
 import { apiKeyHeader } from "@/lib/apiKey";
 import { encodeWav } from "@/lib/audioChunk";
 
 type ModelStatus = "idle" | "loading" | "ready";
 
-// 30-second recording chunks → POST to /api/stt-gemini → Gemini 2.5 Flash STT + diarization
 const CHUNK_MS = 20 * 1000;
 
 interface STTState {
@@ -26,7 +25,6 @@ interface STTState {
 }
 
 export function useOfflineSTT(): STTState {
-  // No model to load — Gemini API is always ready
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [turns, setTurns] = useState<TurnSegment[]>([]);
@@ -35,12 +33,15 @@ export function useOfflineSTT(): STTState {
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chunkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRecordingRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
+  const recordStartTimeRef = useRef(0);   // Date.now() 기반 — 스로틀링에 강함
   const elapsedMsRef = useRef(0);
   const participantsRef = useRef<Participant[]>([]);
   const segIdRef = useRef(0);
   const prevContextRef = useRef<{ sp: number; text: string }[]>([]);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   function formatTime(ms: number): string {
     const s = Math.floor(ms / 1000);
@@ -48,10 +49,28 @@ export function useOfflineSTT(): STTState {
     return `${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   }
 
+  // ── Wake Lock ───────────────────────────────────────────────
+  async function acquireWakeLock() {
+    if (!("wakeLock" in navigator)) return;
+    try {
+      wakeLockRef.current = await (navigator as unknown as {
+        wakeLock: { request: (type: string) => Promise<WakeLockSentinel> };
+      }).wakeLock.request("screen");
+      console.log("[STT] Wake lock 획득 — 화면 꺼짐 방지");
+    } catch {
+      console.warn("[STT] Wake lock 지원 안 됨 (iOS Safari 등)");
+    }
+  }
+
+  function releaseWakeLock() {
+    wakeLockRef.current?.release().catch(() => {});
+    wakeLockRef.current = null;
+  }
+
+  // ── 청크 처리 ───────────────────────────────────────────────
   async function processChunk(blob: Blob, chunkStartMs: number) {
     if (!blob.size) return;
     try {
-      // WebM → WAV 변환: Gemini가 WAV를 더 안정적으로 처리 (WebM 환각 현상 방지)
       let sendBlob = blob;
       try {
         const arrayBuf = await blob.arrayBuffer();
@@ -74,7 +93,6 @@ export function useOfflineSTT(): STTState {
           .join(", ");
         if (names) form.append("speakerNames", names);
       }
-      // 이전 청크 마지막 3턴을 컨텍스트로 전달 → 화자 번호 일관성 유지
       if (prevContextRef.current.length > 0) {
         form.append("prevContext", JSON.stringify(prevContextRef.current));
       }
@@ -90,7 +108,6 @@ export function useOfflineSTT(): STTState {
       };
       if (!segments?.length) return;
 
-      // 다음 청크를 위해 이번 청크 마지막 3턴 저장
       const newContext: { sp: number; text: string }[] = [];
       setTurns((prev) => {
         const next = [...prev];
@@ -118,6 +135,7 @@ export function useOfflineSTT(): STTState {
     }
   }
 
+  // ── 청크 시작 ───────────────────────────────────────────────
   function startChunk(stream: MediaStream) {
     const chunkStartMs = elapsedMsRef.current;
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -132,7 +150,9 @@ export function useOfflineSTT(): STTState {
 
     recorder.onstop = () => {
       if (isRecordingRef.current && streamRef.current) {
-        startChunk(streamRef.current);
+        // 스트림 트랙이 살아있을 때만 다음 청크 시작
+        const alive = streamRef.current.getTracks().some((t) => t.readyState === "live");
+        if (alive) startChunk(streamRef.current);
       }
     };
 
@@ -145,31 +165,92 @@ export function useOfflineSTT(): STTState {
     }, CHUNK_MS);
   }
 
+  // ── visibilitychange: 화면 복귀 시 녹음 상태 복구 ───────────
+  useEffect(() => {
+    async function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      if (!isRecordingRef.current) return;
+
+      console.log("[STT] 화면 복귀 — 녹음 상태 점검");
+
+      // Date.now() 기반으로 실제 경과 시간 업데이트 (스로틀 보정)
+      const actualElapsed = Date.now() - recordStartTimeRef.current;
+      elapsedMsRef.current = actualElapsed;
+      setElapsedMs(actualElapsed);
+
+      // Wake Lock 재획득 (화면 복귀 시 자동 해제됨)
+      if (!wakeLockRef.current) {
+        await acquireWakeLock();
+      }
+
+      // 스트림 트랙이 살아있는데 recorder가 멈췄으면 재시작
+      const stream = streamRef.current;
+      if (!stream) return;
+      const alive = stream.getTracks().some((t) => t.readyState === "live");
+      if (!alive) {
+        console.warn("[STT] 마이크 스트림 종료됨 — 재획득 필요 (사용자 제스처 필요)");
+        return;
+      }
+
+      const recorderState = mediaRecorder.current?.state;
+      if (recorderState !== "recording") {
+        console.warn("[STT] 녹음기 비활성 — 청크 재시작");
+        if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current);
+        startChunk(stream);
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── 녹음 시작 ───────────────────────────────────────────────
   const startRecording = useCallback(async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
     isRecordingRef.current = true;
+    recordStartTimeRef.current = Date.now();
     elapsedMsRef.current = 0;
 
     startChunk(stream);
+    await acquireWakeLock();
 
     setIsRecording(true);
     setElapsedMs(0);
+
+    // Date.now() 기반 타이머 — 스로틀링과 무관하게 정확한 시간 표시
     timerRef.current = setInterval(() => {
-      elapsedMsRef.current += 1000;
-      setElapsedMs((ms) => ms + 1000);
+      const elapsed = Date.now() - recordStartTimeRef.current;
+      elapsedMsRef.current = elapsed;
+      setElapsedMs(elapsed);
     }, 1000);
+
+    // 워치독: 5초마다 녹음기 상태 점검, 멈췄으면 재시작
+    watchdogRef.current = setInterval(() => {
+      if (!isRecordingRef.current || !streamRef.current) return;
+      const alive = streamRef.current.getTracks().some((t) => t.readyState === "live");
+      if (!alive) return; // 스트림 자체가 끊기면 복구 불가
+      if (mediaRecorder.current?.state !== "recording") {
+        console.warn("[STT] 워치독: 녹음기 재시작");
+        if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current);
+        startChunk(streamRef.current);
+      }
+    }, 5000);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── 녹음 중지 ───────────────────────────────────────────────
   const stopRecording = useCallback(() => {
     isRecordingRef.current = false;
     if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current);
+    if (watchdogRef.current) clearInterval(watchdogRef.current);
     mediaRecorder.current?.stop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setIsRecording(false);
     if (timerRef.current) clearInterval(timerRef.current);
+    releaseWakeLock();
   }, []);
 
   const updateSpeakerName = useCallback((sp: number, name: string) => {
