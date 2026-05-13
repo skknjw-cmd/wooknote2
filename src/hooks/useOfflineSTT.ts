@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { TurnSegment, Participant } from "@/types/meeting";
-import { apiKeyHeader } from "@/lib/apiKey";
+import { getSttProvider, apiKeyHeader, openAiKeyHeader } from "@/lib/apiKey";
 import { encodeWav } from "@/lib/audioChunk";
 
 type ModelStatus = "idle" | "loading" | "ready";
@@ -97,7 +97,10 @@ export function useOfflineSTT(): STTState {
         form.append("prevContext", JSON.stringify(prevContextRef.current));
       }
 
-      const res = await fetch("/api/stt-gemini", { method: "POST", body: form, headers: apiKeyHeader() });
+      const provider = getSttProvider();
+      const endpoint = provider === "openai" ? "/api/stt-openai" : "/api/stt-gemini";
+      const headers = provider === "openai" ? openAiKeyHeader() : apiKeyHeader();
+      const res = await fetch(endpoint, { method: "POST", body: form, headers });
       if (!res.ok) {
         console.error("[STT] Gemini 오류:", await res.text());
         return;

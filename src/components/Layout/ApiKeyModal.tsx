@@ -1,11 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { getApiKey, setApiKey } from "@/lib/apiKey";
+import {
+  getApiKey, setApiKey,
+  getOpenAiKey, setOpenAiKey,
+  getSttProvider, setSttProvider,
+  type SttProvider,
+} from "@/lib/apiKey";
 import { isFolderPickerSupported } from "@/lib/folderStorage";
 
 interface ApiKeyModalProps {
-  /** true면 닫기 불가 (최초 설정) */
   required?: boolean;
   onClose: () => void;
   folderName?: string | null;
@@ -13,12 +17,19 @@ interface ApiKeyModalProps {
 }
 
 export default function ApiKeyModal({ required = false, onClose, folderName, onPickFolder }: ApiKeyModalProps) {
-  const [value, setValue] = useState(getApiKey());
+  const [provider, setProvider] = useState<SttProvider>(getSttProvider());
+  const [geminiKey, setGeminiKey] = useState(getApiKey());
+  const [openAiKey, setOpenAiKeyState] = useState(getOpenAiKey());
   const [saved, setSaved] = useState(false);
   const [show, setShow] = useState(false);
 
+  const activeKey = provider === "openai" ? openAiKey : geminiKey;
+  const setActiveKey = provider === "openai" ? setOpenAiKeyState : setGeminiKey;
+
   function handleSave() {
-    setApiKey(value);
+    setSttProvider(provider);
+    setApiKey(geminiKey);
+    setOpenAiKey(openAiKey);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -26,11 +37,42 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
     }, 800);
   }
 
-  const masked = value
+  const masked = activeKey
     ? show
-      ? value
-      : value.slice(0, 6) + "•".repeat(Math.max(0, value.length - 10)) + value.slice(-4)
+      ? activeKey
+      : activeKey.slice(0, 6) + "•".repeat(Math.max(0, activeKey.length - 10)) + activeKey.slice(-4)
     : "";
+
+  const providerMeta = {
+    gemini: {
+      label: "Gemini",
+      placeholder: "AIzaSy...",
+      guide: (
+        <>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer"
+            style={{ color: "var(--info)", fontWeight: 600, textDecoration: "none" }}>
+            Google AI Studio
+          </a>
+          에서 무료로 발급받을 수 있습니다.
+        </>
+      ),
+    },
+    openai: {
+      label: "OpenAI",
+      placeholder: "sk-...",
+      guide: (
+        <>
+          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer"
+            style={{ color: "var(--info)", fontWeight: 600, textDecoration: "none" }}>
+            OpenAI Platform
+          </a>
+          에서 발급받을 수 있습니다. gpt-4o-transcribe-diarize를 사용합니다.
+        </>
+      ),
+    },
+  };
+
+  const meta = providerMeta[provider];
 
   return (
     <div className="modal-bg" onClick={required ? undefined : onClose}>
@@ -49,8 +91,8 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
             </svg>
           </span>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>Gemini API 키 설정</div>
-            <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>AI 요약 및 STT 기능에 사용됩니다</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>STT 설정</div>
+            <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>음성 인식 엔진과 API 키를 설정합니다</div>
           </div>
           {!required && (
             <button className="icon-btn" style={{ marginLeft: "auto" }} onClick={onClose}>
@@ -61,28 +103,47 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
           )}
         </div>
 
-        {/* Input */}
+        {/* Provider Toggle */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {(["gemini", "openai"] as SttProvider[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setProvider(p)}
+              style={{
+                flex: 1, padding: "7px 0", fontSize: 12.5, fontWeight: 600,
+                borderRadius: "var(--r-md)", cursor: "pointer",
+                border: provider === p ? "1.5px solid var(--accent)" : "1.5px solid var(--border-strong)",
+                background: provider === p ? "var(--accent-soft, #ede9fe)" : "var(--surface)",
+                color: provider === p ? "var(--accent, #7c3aed)" : "var(--ink-3)",
+                transition: "all 0.15s",
+              }}
+            >
+              {providerMeta[p].label}
+            </button>
+          ))}
+        </div>
+
+        {/* Key Input */}
         <div style={{ position: "relative", marginBottom: 10 }}>
           <input
             type={show ? "text" : "password"}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="AIzaSy..."
+            value={show ? activeKey : masked}
+            onChange={(e) => setActiveKey(e.target.value)}
+            placeholder={meta.placeholder}
             style={{
               width: "100%", padding: "9px 40px 9px 12px", fontSize: 13,
               border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)",
               background: "var(--surface)", color: "var(--ink)", outline: "none",
               fontFamily: "var(--font-mono)", boxSizing: "border-box",
             }}
-            onKeyDown={(e) => e.key === "Enter" && value.trim() && handleSave()}
+            onKeyDown={(e) => e.key === "Enter" && activeKey.trim() && handleSave()}
             autoFocus
           />
           <button
             onClick={() => setShow((s) => !s)}
             style={{
               position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-              background: "none", border: "none", cursor: "pointer", color: "var(--ink-4)",
-              padding: 2,
+              background: "none", border: "none", cursor: "pointer", color: "var(--ink-4)", padding: 2,
             }}
             title={show ? "숨기기" : "보기"}
           >
@@ -107,27 +168,14 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
           background: "var(--surface-2)", borderRadius: "var(--r-sm)",
           padding: "8px 10px", marginBottom: 16,
         }}>
-          <a
-            href="https://aistudio.google.com/app/apikey"
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "var(--info)", fontWeight: 600, textDecoration: "none" }}
-          >
-            Google AI Studio
-          </a>
-          에서 무료로 발급받을 수 있습니다.
-          키는 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
+          {meta.guide}
+          {" "}키는 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
         </div>
 
-        {/* Folder picker (Chrome/Edge only) */}
+        {/* Folder picker */}
         {isFolderPickerSupported() && (
-          <div style={{
-            borderTop: "1px solid var(--border)",
-            paddingTop: 14, marginBottom: 16,
-          }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginBottom: 8 }}>
-              저장 폴더
-            </div>
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginBottom: 8 }}>저장 폴더</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 13 }}>📁</span>
               <span style={{ fontSize: 13, color: folderName ? "var(--ink)" : "var(--ink-4)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -151,7 +199,7 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!value.trim() || saved}
+            disabled={!activeKey.trim() || saved}
             style={{ minWidth: 80 }}
           >
             {saved ? "저장됨 ✓" : "저장"}
