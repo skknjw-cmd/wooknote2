@@ -322,10 +322,10 @@ export default function Home() {
 
   async function handleToggleRecording() {
     if (stt.isRecording) {
-      stt.stopRecording();
+      await stt.stopRecording();
       setAppMode("review");
       if (currentNote) {
-        await analyzeFromTurns(currentNote, stt.turns, stt.participants);
+        await analyzeFromTurns(currentNote, stt.getLatestTurns(), stt.participants);
       }
     } else {
       stt.startRecording().catch(console.error);

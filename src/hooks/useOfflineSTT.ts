@@ -17,7 +17,8 @@ interface STTState {
   turns: TurnSegment[];
   participants: Participant[];
   startRecording: () => Promise<void>;
-  stopRecording: () => void;
+  stopRecording: () => Promise<void>;
+  getLatestTurns: () => TurnSegment[];
   updateSpeakerName: (sp: number, name: string) => void;
   setParticipants: (p: Participant[]) => void;
   editTurn: (id: number, newText: string) => void;
@@ -29,6 +30,9 @@ export function useOfflineSTT(): STTState {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [turns, setTurns] = useState<TurnSegment[]>([]);
   const [participants, setParticipantsState] = useState<Participant[]>([]);
+
+  const turnsRef = useRef<TurnSegment[]>([]);
+  const lastChunkRef = useRef<Promise<void>>(Promise.resolve());
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -130,6 +134,7 @@ export function useOfflineSTT(): STTState {
           }
         }
         newContext.push(...next.slice(-3).map((t) => ({ sp: t.sp, text: t.text })));
+        turnsRef.current = next;
         return next;
       });
       prevContextRef.current = newContext;
@@ -148,7 +153,7 @@ export function useOfflineSTT(): STTState {
     const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64000 });
 
     recorder.ondataavailable = (e) => {
-      if (e.data.size) processChunk(e.data, chunkStartMs);
+      if (e.data.size) lastChunkRef.current = processChunk(e.data, chunkStartMs);
     };
 
     recorder.onstop = () => {
@@ -244,16 +249,34 @@ export function useOfflineSTT(): STTState {
   }, []);
 
   // ── 녹음 중지 ───────────────────────────────────────────────
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback((): Promise<void> => {
     isRecordingRef.current = false;
     if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current);
     if (watchdogRef.current) clearInterval(watchdogRef.current);
-    mediaRecorder.current?.stop();
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
     setIsRecording(false);
     if (timerRef.current) clearInterval(timerRef.current);
     releaseWakeLock();
+
+    const recorder = mediaRecorder.current;
+    const stream = streamRef.current;
+    streamRef.current = null;
+
+    if (!recorder || recorder.state !== "recording") {
+      stream?.getTracks().forEach((t) => t.stop());
+      return lastChunkRef.current;
+    }
+
+    return new Promise<void>((resolve) => {
+      recorder.ondataavailable = (e) => {
+        if (e.data.size) lastChunkRef.current = processChunk(e.data, elapsedMsRef.current);
+      };
+      recorder.onstop = async () => {
+        stream?.getTracks().forEach((t) => t.stop());
+        await lastChunkRef.current;
+        resolve();
+      };
+      recorder.stop();
+    });
   }, []);
 
   const updateSpeakerName = useCallback((sp: number, name: string) => {
@@ -269,8 +292,14 @@ export function useOfflineSTT(): STTState {
     setParticipantsState(p);
   }, []);
 
+  const getLatestTurns = useCallback(() => turnsRef.current, []);
+
   const editTurn = useCallback((id: number, newText: string) => {
-    setTurns((prev) => prev.map((t) => t.id === id ? { ...t, text: newText } : t));
+    setTurns((prev) => {
+      const next = prev.map((t) => t.id === id ? { ...t, text: newText } : t);
+      turnsRef.current = next;
+      return next;
+    });
   }, []);
 
   const splitTurn = useCallback((id: number, beforeText: string, afterText: string) => {
@@ -284,6 +313,7 @@ export function useOfflineSTT(): STTState {
         { ...original, text: beforeText },
         { id: newId, sp: original.sp, t: original.t, text: afterText }
       );
+      turnsRef.current = next;
       return next;
     });
   }, []);
@@ -297,6 +327,7 @@ export function useOfflineSTT(): STTState {
     participants,
     startRecording,
     stopRecording,
+    getLatestTurns,
     updateSpeakerName,
     setParticipants,
     editTurn,
