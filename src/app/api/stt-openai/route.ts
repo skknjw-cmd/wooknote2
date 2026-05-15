@@ -40,11 +40,6 @@ export async function POST(req: NextRequest) {
     openAiForm.append("model", "gpt-4o-transcribe-diarize");
     openAiForm.append("response_format", "diarized_json");
     openAiForm.append("language", "ko");
-    // gpt-4o-transcribe-diarize는 prompt를 공식 지원하지 않지만, 지원되는 경우를 위해 추가
-    openAiForm.append(
-      "prompt",
-      "실제로 명확하게 들리는 말만 전사하세요. 잘 안 들리거나 불명확한 부분은 [못들음]으로 표시하고 절대 추측하지 마세요."
-    );
 
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
