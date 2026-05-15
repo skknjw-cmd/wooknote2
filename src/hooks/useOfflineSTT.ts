@@ -126,6 +126,7 @@ export function useOfflineSTT(): STTState {
       const json = (await res.json()) as {
         segments: { clovaLabel: string; text: string }[];
         _raw?: string;
+        _debug?: unknown;
       };
       const { segments } = json;
       if (!segments?.length) {
@@ -133,7 +134,8 @@ export function useOfflineSTT(): STTState {
         else setSttError(null);
         return;
       }
-      setSttError(null);
+      if (json._debug) setSttError(`[진단] ${JSON.stringify(json._debug).slice(0, 300)}`);
+      else setSttError(null);
 
       const newContext: { sp: number; text: string }[] = [];
       setTurns((prev) => {

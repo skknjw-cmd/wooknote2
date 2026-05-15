@@ -88,7 +88,15 @@ export async function POST(req: NextRequest) {
     }
 
     const text = segments.map((s) => `[화자 ${s.clovaLabel}] ${s.text}`).join("\n");
-    const payload: ApiSttResponse = { segments, text };
+    // 진단용: 실제 응답 구조 노출 (화자구분 디버깅)
+    const debugKeys = Object.keys(data);
+    const debugFirst = Array.isArray(data.segments) ? JSON.stringify(data.segments[0]).slice(0, 200) : "no segments";
+    console.log("[stt-openai] response keys:", debugKeys, "first segment:", debugFirst);
+    const payload: ApiSttResponse & { _debug?: unknown } = {
+      segments,
+      text,
+      _debug: { keys: debugKeys, firstSegment: data.segments?.[0] ?? null },
+    };
     return NextResponse.json(payload);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "unknown";
