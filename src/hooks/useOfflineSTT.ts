@@ -7,7 +7,7 @@ import { encodeWav } from "@/lib/audioChunk";
 
 type ModelStatus = "idle" | "loading" | "ready";
 
-const CHUNK_MS = 20 * 1000;
+const CHUNK_MS = 8 * 1000;
 
 interface STTState {
   modelStatus: ModelStatus;
