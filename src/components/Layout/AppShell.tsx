@@ -28,6 +28,7 @@ interface AppShellProps {
   onSplitTurn: (id: number, beforeText: string, afterText: string) => void;
   /** When provided, replaces the LiveTranscript pane with custom content */
   transcriptSlot?: React.ReactNode;
+  sttError?: string | null;
   pendingTurnCount?: number;
   onRegen?: () => void;
   onUpdateNote?: (note: NoteRecord) => void;
@@ -57,6 +58,7 @@ export default function AppShell({
   onEditTurn,
   onSplitTurn,
   transcriptSlot,
+  sttError,
   pendingTurnCount = 0,
   onRegen,
   onUpdateNote,
@@ -175,6 +177,7 @@ export default function AppShell({
               mode={mode}
               isRecording={isRecording}
               elapsedMs={elapsedMs}
+              sttError={sttError}
               onToggleRecording={onToggleRecording}
               onSpeakerName={onSpeakerName}
               onToggleKeyword={onToggleKeyword}

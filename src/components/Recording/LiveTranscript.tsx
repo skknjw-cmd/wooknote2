@@ -12,6 +12,7 @@ interface LiveTranscriptProps {
   mode: "live" | "review";
   isRecording: boolean;
   elapsedMs: number;
+  sttError?: string | null;
   onToggleRecording: () => void;
   onSpeakerName: (sp: number, name: string) => void;
   onToggleKeyword: (word: string) => void;
@@ -36,6 +37,7 @@ export default function LiveTranscript({
   mode,
   isRecording,
   elapsedMs,
+  sttError,
   onToggleRecording,
   onSpeakerName,
   onToggleKeyword,
@@ -88,6 +90,13 @@ export default function LiveTranscript({
               <span className="ct">{k.n}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* STT 에러 */}
+      {sttError && (
+        <div style={{ margin: "8px 12px", padding: "8px 12px", background: "#fff0f0", border: "1px solid #fca5a5", borderRadius: 6, fontSize: 12, color: "#b91c1c", lineHeight: 1.5 }}>
+          {sttError}
         </div>
       )}
 

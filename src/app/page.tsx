@@ -527,6 +527,7 @@ export default function Home() {
         mode={appMode}
         isRecording={stt.isRecording}
         elapsedMs={stt.elapsedMs}
+        sttError={stt.sttError}
         turns={currentNote?.entryMethod === "live" || !currentNote?.entryMethod ? stt.turns : (currentNote?.segments ?? [])}
         keywords={keywords}
         participants={stt.participants}

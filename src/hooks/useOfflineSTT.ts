@@ -16,6 +16,7 @@ interface STTState {
   elapsedMs: number;
   turns: TurnSegment[];
   participants: Participant[];
+  sttError: string | null;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   getLatestTurns: () => TurnSegment[];
@@ -30,6 +31,7 @@ export function useOfflineSTT(): STTState {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [turns, setTurns] = useState<TurnSegment[]>([]);
   const [participants, setParticipantsState] = useState<Participant[]>([]);
+  const [sttError, setSttError] = useState<string | null>(null);
 
   const turnsRef = useRef<TurnSegment[]>([]);
   const lastChunkRef = useRef<Promise<void>>(Promise.resolve());
@@ -104,16 +106,31 @@ export function useOfflineSTT(): STTState {
       const provider = getSttProvider();
       const endpoint = provider === "openai" ? "/api/stt-openai" : "/api/stt-gemini";
       const headers = provider === "openai" ? openAiKeyHeader() : apiKeyHeader();
+
+      const hasKey = provider === "openai"
+        ? Object.keys(openAiKeyHeader()).length > 0
+        : Object.keys(apiKeyHeader()).length > 0;
+      if (!hasKey) {
+        setSttError(`${provider === "openai" ? "OpenAI" : "Gemini"} API 키가 설정되지 않았습니다. 우상단 설정에서 입력해주세요.`);
+        return;
+      }
+
       const res = await fetch(endpoint, { method: "POST", body: form, headers });
       if (!res.ok) {
-        console.error("[STT] Gemini 오류:", await res.text());
+        const errText = await res.text();
+        console.error("[STT] API 오류:", errText);
+        setSttError(`STT 오류 (${res.status}): ${errText.slice(0, 120)}`);
         return;
       }
 
       const { segments } = (await res.json()) as {
         segments: { clovaLabel: string; text: string }[];
       };
-      if (!segments?.length) return;
+      if (!segments?.length) {
+        setSttError(null);
+        return;
+      }
+      setSttError(null);
 
       const newContext: { sp: number; text: string }[] = [];
       setTurns((prev) => {
@@ -140,6 +157,7 @@ export function useOfflineSTT(): STTState {
       prevContextRef.current = newContext;
     } catch (err) {
       console.error("[STT] 처리 실패:", err);
+      setSttError(`STT 처리 실패: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -325,6 +343,7 @@ export function useOfflineSTT(): STTState {
     elapsedMs,
     turns,
     participants,
+    sttError,
     startRecording,
     stopRecording,
     getLatestTurns,
