@@ -211,14 +211,22 @@ export default function Home() {
     prevTurnsLen.current = stt.turns.length;
   }
 
-  function saveNote(updated: NoteRecord) {
+  function updateNoteState(updated: NoteRecord) {
     setCurrentNote(updated);
     setNotes((prev) => {
       const exists = prev.find((n) => n.id === updated.id);
       return exists ? prev.map((n) => (n.id === updated.id ? updated : n)) : [updated, ...prev];
     });
+  }
+
+  function saveNote(updated: NoteRecord) {
+    updateNoteState(updated);
     dbSave(updated).catch(console.error);
     saveNoteToFolder(updated).catch(console.error);
+  }
+
+  function handleSave() {
+    if (currentNote) saveNote(currentNote);
   }
 
   async function handlePickFolder() {
@@ -308,8 +316,7 @@ export default function Home() {
     setAnalyzing(true);
     try {
       const result = await callAnalyze(transcript, meetingInfo);
-      // segments를 항상 저장 → 다시 정리 시 transcript 재사용 가능
-      saveNote(applyAnalysis({ ...note, participants, segments: turns }, result));
+      updateNoteState(applyAnalysis({ ...note, participants, segments: turns }, result));
     } catch (err) {
       console.error("[analyze] 실패:", err);
       alert("AI 분석 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
@@ -538,6 +545,7 @@ export default function Home() {
         onSpeakerName={stt.updateSpeakerName}
         onToggleKeyword={handleToggleKeyword}
         onExport={() => setShowExport(true)}
+        onSave={handleSave}
         onRegen={handleRegen}
         onEditTurn={stt.editTurn}
         onSplitTurn={stt.splitTurn}

@@ -24,6 +24,7 @@ interface AppShellProps {
   onSpeakerName: (sp: number, name: string) => void;
   onToggleKeyword: (word: string) => void;
   onExport: () => void;
+  onSave?: () => void;
   onEditTurn: (id: number, newText: string) => void;
   onSplitTurn: (id: number, beforeText: string, afterText: string) => void;
   /** When provided, replaces the LiveTranscript pane with custom content */
@@ -55,6 +56,7 @@ export default function AppShell({
   onSpeakerName,
   onToggleKeyword,
   onExport,
+  onSave,
   onEditTurn,
   onSplitTurn,
   transcriptSlot,
@@ -154,10 +156,11 @@ export default function AppShell({
         {mode === "review" && (
           <div className="review-banner" style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}>
             <span className="ico">⏺</span>
-            <span><b>녹음이 종료되었습니다.</b> AI 정리가 자동으로 갱신되었어요.</span>
+            <span><b>녹음이 종료되었습니다.</b> 저장하려면 저장 버튼을 눌러주세요.</span>
             <div className="actions">
               <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
-              <button className="btn btn-primary" onClick={onExport}>저장</button>
+              <button className="btn" onClick={onExport}>내보내기</button>
+              <button className="btn btn-primary" onClick={onSave}>저장</button>
             </div>
           </div>
         )}
