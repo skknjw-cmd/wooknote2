@@ -15,12 +15,11 @@ type ApiSttResponse = {
   text: string;
 };
 
-const MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
-const CHUNK_DURATION_S = 20;
+const MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.0-flash"];
+const CHUNK_DURATION_S = 8;
 
-// 20초 청크에서 한국어 평균 발화 속도 기준 최대 글자 수 (넉넉하게 2배)
-// 한국어 평균: ~4글자/초 × 20초 × 2 = 160글자. 토큰으로 약 320.
-const MAX_TOKENS_PER_CHUNK = 400;
+// 8초 청크 기준 충분한 토큰 확보 (thinking 토큰 포함 여유)
+const MAX_TOKENS_PER_CHUNK = 2048;
 
 // 시스템 지침: 절대 원칙으로 분리
 const SYSTEM_INSTRUCTION = `당신은 오디오 STT(음성→텍스트) 전사 전문가입니다.
@@ -162,26 +161,29 @@ export async function POST(req: NextRequest) {
 
     let segments: ApiSegment[] | null = null;
     let lastError = "";
+    let rawDebug = "";
 
     for (const modelName of MODEL_CHAIN) {
       try {
-        const model = genAI.getGenerativeModel(
-          {
-            model: modelName,
-            systemInstruction: SYSTEM_INSTRUCTION,
-            generationConfig: {
-              temperature: 0,
-              maxOutputTokens: MAX_TOKENS_PER_CHUNK,
-            },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const modelParams: any = {
+          model: modelName,
+          systemInstruction: SYSTEM_INSTRUCTION,
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: MAX_TOKENS_PER_CHUNK,
+            // thinking 비활성화: thinking 토큰이 출력 한도를 잠식하는 현상 방지
+            thinkingConfig: { thinkingBudget: 0 },
           },
-          { apiVersion: "v1beta" }
-        );
+        };
+        const model = genAI.getGenerativeModel(modelParams, { apiVersion: "v1beta" });
         const result = await model.generateContent([
           { inlineData: { mimeType, data: base64 } },
           userPrompt,
         ]);
         const raw = result.response.text();
-        console.log(`[stt-gemini] ${modelName} 원본 출력 (첫 120자):`, raw.slice(0, 120));
+        rawDebug = raw.slice(0, 200);
+        console.log(`[stt-gemini] ${modelName} 원본 출력 (첫 200자):`, rawDebug);
         segments = parseGeminiOutput(raw);
         break;
       } catch (err) {
@@ -200,9 +202,13 @@ export async function POST(req: NextRequest) {
       segments = segments.filter((s) => !prevTexts.has(s.text.trim()));
     }
 
-    // 발화 없음 → 빈 배열로 반환 (프론트에서 처리)
     const text = segments.map((s) => `[화자 ${s.clovaLabel}] ${s.text}`).join("\n");
-    const payload: ApiSttResponse = { segments, text };
+    const payload: ApiSttResponse & { _raw?: string } = {
+      segments,
+      text,
+      // 진단용: segments가 비어있을 때 실제 모델 출력 노출
+      ...(segments.length === 0 && rawDebug ? { _raw: rawDebug } : {}),
+    };
     return NextResponse.json(payload);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "unknown";

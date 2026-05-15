@@ -123,11 +123,14 @@ export function useOfflineSTT(): STTState {
         return;
       }
 
-      const { segments } = (await res.json()) as {
+      const json = (await res.json()) as {
         segments: { clovaLabel: string; text: string }[];
+        _raw?: string;
       };
+      const { segments } = json;
       if (!segments?.length) {
-        setSttError(null);
+        if (json._raw) setSttError(`[진단] 모델 출력: "${json._raw}"`);
+        else setSttError(null);
         return;
       }
       setSttError(null);

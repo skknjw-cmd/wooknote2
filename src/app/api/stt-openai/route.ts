@@ -47,7 +47,8 @@ export async function POST(req: NextRequest) {
     openAiForm.append("file", file, "chunk.wav");
     openAiForm.append("model", "gpt-4o-transcribe-diarize");
     openAiForm.append("response_format", "diarized_json");
-    openAiForm.append("language", "ko");
+    // language 파라미터는 diarize 모델에서 silently 무시되어 자동 감지로 전환됨
+    // → 짧은 한국어 클립을 일본어로 오감지하는 원인. 제거 후 자동 감지가 더 안정적.
 
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
