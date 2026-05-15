@@ -22,6 +22,14 @@ function speakerToLabel(speakerId: string, map: Map<string, string>): string {
   return map.get(speakerId)!;
 }
 
+// 일본어 히라가나/가타카나만 있고 한국어·영어가 전혀 없으면 hallucination으로 간주
+function isJapaneseHallucination(text: string): boolean {
+  const hasJapanese = /[぀-ヿ]/.test(text);
+  const hasKorean = /[가-힣ᄀ-ᇿ㄰-㆏]/.test(text);
+  const hasLatin = /[A-Za-z]/.test(text);
+  return hasJapanese && !hasKorean && !hasLatin;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -62,6 +70,10 @@ export async function POST(req: NextRequest) {
       for (const seg of data.segments) {
         const text = String(seg.text ?? "").trim();
         if (!text || text === "SILENCE") continue;
+        if (isJapaneseHallucination(text)) {
+          console.warn("[stt-openai] 일본어 hallucination 제거:", text.slice(0, 60));
+          continue;
+        }
         const label = speakerToLabel(String(seg.speaker ?? "SPEAKER_0"), speakerMap);
         segments.push({
           clovaLabel: label,
