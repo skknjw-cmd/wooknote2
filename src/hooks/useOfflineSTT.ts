@@ -35,6 +35,8 @@ export function useOfflineSTT(): STTState {
 
   const turnsRef = useRef<TurnSegment[]>([]);
   const lastChunkRef = useRef<Promise<void>>(Promise.resolve());
+  // 청크 간 화자 레이블 연속성 유지: 모델이 반환한 "A","B","C" → 일관된 sp 번호
+  const speakerLetterMapRef = useRef<Map<string, number>>(new Map());
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -126,7 +128,6 @@ export function useOfflineSTT(): STTState {
       const json = (await res.json()) as {
         segments: { clovaLabel: string; text: string }[];
         _raw?: string;
-        _debug?: unknown;
       };
       const { segments } = json;
       if (!segments?.length) {
@@ -134,15 +135,25 @@ export function useOfflineSTT(): STTState {
         else setSttError(null);
         return;
       }
-      if (json._debug) setSttError(`[진단] ${JSON.stringify(json._debug).slice(0, 300)}`);
-      else setSttError(null);
+      setSttError(null);
 
       const newContext: { sp: number; text: string }[] = [];
       setTurns((prev) => {
         const next = [...prev];
         for (const seg of segments) {
           if (!seg.text?.trim()) continue;
-          const sp = parseInt(seg.clovaLabel, 10) || 1;
+          // 숫자 레이블(Gemini)이면 그대로, 문자 레이블(OpenAI "A","B")이면 누적 맵으로 변환
+          let sp: number;
+          const parsed = parseInt(seg.clovaLabel, 10);
+          if (!isNaN(parsed)) {
+            sp = parsed || 1;
+          } else {
+            const letter = seg.clovaLabel.trim();
+            if (!speakerLetterMapRef.current.has(letter)) {
+              speakerLetterMapRef.current.set(letter, speakerLetterMapRef.current.size + 1);
+            }
+            sp = speakerLetterMapRef.current.get(letter)!;
+          }
           const last = next[next.length - 1];
           if (last && last.sp === sp) {
             next[next.length - 1] = { ...last, text: last.text + " " + seg.text.trim() };
@@ -244,6 +255,7 @@ export function useOfflineSTT(): STTState {
     recordStartTimeRef.current = Date.now();
     elapsedMsRef.current = 0;
 
+    speakerLetterMapRef.current = new Map();
     startChunk(stream);
     await acquireWakeLock();
 
