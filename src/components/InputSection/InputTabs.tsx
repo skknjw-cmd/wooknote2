@@ -3,6 +3,12 @@ import styles from "./InputTabs.module.css";
 import type { Segment, InputData } from "@/types/meeting";
 import { resolveSegments, parseAttendees } from "@/lib/speakerMapping";
 import { proposeExcessMerge, applyMergeProposals } from "@/lib/speakerMerge";
+import {
+  getSttProvider,
+  apiKeyHeader,
+  openAiKeyHeader,
+  clovaKeyHeaders,
+} from "@/lib/apiKey";
 
 const SEGMENT_DURATION_MS = 3 * 60 * 1000;
 
@@ -86,11 +92,16 @@ export default function InputTabs({
     onChange({ type, content: type === "text" ? "" : null });
   };
 
-  const getGeminiHeaders = (): Record<string, string> => {
-    const saved = localStorage.getItem("wooks_settings");
-    const settings = saved ? JSON.parse(saved) : {};
-    const headers: Record<string, string> = {};
-    if (settings.geminiKey) headers["x-gemini-key"] = settings.geminiKey;
+  const getSttHeaders = (): Record<string, string> => {
+    const provider = getSttProvider();
+    let headers: Record<string, string> = {};
+    if (provider === "openai") {
+      headers = openAiKeyHeader();
+    } else if (provider === "clova") {
+      headers = clovaKeyHeaders();
+    } else {
+      headers = apiKeyHeader();
+    }
     const count = parseAttendees(attendeesCsv).length;
     if (count > 0) headers["x-attendee-count"] = String(count);
     return headers;
@@ -153,9 +164,17 @@ export default function InputTabs({
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 55000);
-      const res = await fetch("/api/stt-gemini", {
+      const provider = getSttProvider();
+      const endpoint =
+        provider === "openai"
+          ? "/api/stt-openai"
+          : provider === "clova"
+          ? "/api/stt"
+          : "/api/stt-gemini";
+
+      const res = await fetch(endpoint, {
         method: "POST",
-        headers: getGeminiHeaders(),
+        headers: getSttHeaders(),
         body: formData,
         signal: controller.signal,
       });

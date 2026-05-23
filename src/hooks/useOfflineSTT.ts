@@ -2,12 +2,12 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { TurnSegment, Participant } from "@/types/meeting";
-import { getSttProvider, apiKeyHeader, openAiKeyHeader } from "@/lib/apiKey";
+import { getSttProvider, apiKeyHeader, openAiKeyHeader, clovaKeyHeaders } from "@/lib/apiKey";
 import { encodeWav } from "@/lib/audioChunk";
 
 type ModelStatus = "idle" | "loading" | "ready";
 
-const CHUNK_MS = 8 * 1000;
+const CHUNK_MS = 15 * 1000;
 
 interface STTState {
   modelStatus: ModelStatus;
@@ -106,14 +106,26 @@ export function useOfflineSTT(): STTState {
       }
 
       const provider = getSttProvider();
-      const endpoint = provider === "openai" ? "/api/stt-openai" : "/api/stt-gemini";
-      const headers = provider === "openai" ? openAiKeyHeader() : apiKeyHeader();
+      let endpoint = "/api/stt-gemini";
+      let headers = apiKeyHeader();
+
+      if (provider === "openai") {
+        endpoint = "/api/stt-openai";
+        headers = openAiKeyHeader();
+      } else if (provider === "clova") {
+        endpoint = "/api/stt";
+        headers = clovaKeyHeaders();
+      }
 
       const hasKey = provider === "openai"
         ? Object.keys(openAiKeyHeader()).length > 0
+        : provider === "clova"
+        ? Object.keys(clovaKeyHeaders()).length > 0
         : Object.keys(apiKeyHeader()).length > 0;
+
       if (!hasKey) {
-        setSttError(`${provider === "openai" ? "OpenAI" : "Gemini"} API 키가 설정되지 않았습니다. 우상단 설정에서 입력해주세요.`);
+        const providerName = provider === "openai" ? "OpenAI" : provider === "clova" ? "Clova Speech" : "Gemini";
+        setSttError(`${providerName} API 키가 설정되지 않았습니다. 우상단 설정에서 입력해주세요.`);
         return;
       }
 

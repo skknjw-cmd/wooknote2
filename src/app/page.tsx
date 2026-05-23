@@ -16,7 +16,17 @@ import {
   exportAsDocx,
   exportAsAudio,
 } from "@/lib/exportNote";
-import { apiKeyHeader, hasApiKey } from "@/lib/apiKey";
+import {
+  getSttProvider,
+  getApiKey,
+  getOpenAiKey,
+  getClovaUrl,
+  getClovaSecretKey,
+  apiKeyHeader,
+  openAiKeyHeader,
+  clovaKeyHeaders,
+  hasApiKey,
+} from "@/lib/apiKey";
 import { chunkAudioFile } from "@/lib/audioChunk";
 import { useOfflineSTT } from "@/hooks/useOfflineSTT";
 import { saveNote as dbSave, getNotes as dbGetNotes } from "@/lib/db";
@@ -390,52 +400,90 @@ export default function Home() {
     const note = currentNote ?? emptyNote("audio");
     if (!currentNote) setCurrentNote(note);
     try {
-      if (!hasApiKey()) {
+      const provider = getSttProvider();
+      if (provider === "gemini" && !getApiKey()) {
         throw new Error("Gemini API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.");
+      } else if (provider === "openai" && !getOpenAiKey()) {
+        throw new Error("OpenAI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.");
+      } else if (provider === "clova" && (!getClovaUrl() || !getClovaSecretKey())) {
+        throw new Error("Clova Speech API 설정이 불완전합니다. 설정에서 Invoke URL과 Secret Key를 확인해주세요.");
       }
-
-      // 파일을 30초 WAV 청크로 분할 (413 오류 방지)
-      const chunks = await chunkAudioFile(file);
-      console.log(`[audio] ${file.name} → ${chunks.length}개 청크`);
-      setAudioProgress({ current: 0, total: chunks.length });
 
       const texts: string[] = [];
       const allTurns: TurnSegment[] = [];
       let turnId = 0;
-      let prevContext: { sp: number; text: string }[] = [];
 
-      for (let i = 0; i < chunks.length; i++) {
+      if (provider === "clova") {
+        // Clova Speech는 파일을 쪼개지 않고 전체 파일을 통째로 전송하여 완벽한 화자 분리와 전사를 얻습니다.
+        setAudioProgress({ current: 0, total: 1 });
         const form = new FormData();
-        form.append("media", chunks[i], `chunk_${i}.wav`);
-        if (prevContext.length > 0) form.append("prevContext", JSON.stringify(prevContext));
+        form.append("media", file);
 
-        // 503/429 과부하 오류 시 최대 3회 재시도 (2s, 4s 대기)
-        let sttRes = await fetch("/api/stt-gemini", { method: "POST", headers: apiKeyHeader(), body: form });
-        for (let attempt = 1; attempt < 3 && (sttRes.status === 503 || sttRes.status === 429); attempt++) {
-          console.warn(`[audio] 청크 ${i + 1} ${sttRes.status} → ${attempt}회 재시도`);
-          await new Promise((r) => setTimeout(r, attempt * 2000));
-          sttRes = await fetch("/api/stt-gemini", { method: "POST", headers: apiKeyHeader(), body: form });
+        const res = await fetch("/api/stt", {
+          method: "POST",
+          headers: clovaKeyHeaders(),
+          body: form,
+        });
+
+        if (!res.ok) {
+          throw new Error(`Clova Speech API 호출 실패 (${res.status}): ${await res.text()}`);
         }
-        if (!sttRes.ok) throw new Error(`STT 청크 ${i + 1} 실패 (${sttRes.status}): ${await sttRes.text()}`);
-        const sttJson = await sttRes.json();
-        const chunkText: string = sttJson.text ?? "";
-        console.log(`[audio] 청크 ${i + 1}/${chunks.length}:`, chunkText.slice(0, 80));
-        if (chunkText) texts.push(chunkText);
 
-        // 세그먼트를 TurnSegment로 수집 (트랜스크립트 패널 표시용)
-        const segs: { clovaLabel: string; text: string }[] = sttJson.segments ?? [];
-        const chunkOffsetSecs = i * 60;
+        const sttJson = await res.json();
+        const segs: { clovaLabel: string; text: string; start?: number }[] = sttJson.segments ?? [];
         for (const seg of segs) {
           const sp = parseInt(seg.clovaLabel) || 1;
-          const mm = String(Math.floor(chunkOffsetSecs / 60)).padStart(2, "0");
-          const ss = String(chunkOffsetSecs % 60).padStart(2, "0");
+          const startMs = typeof seg.start === "number" ? seg.start : 0;
+          const s = Math.floor(startMs / 1000);
+          const mm = String(Math.floor(s / 60)).padStart(2, "0");
+          const ss = String(s % 60).padStart(2, "0");
           allTurns.push({ id: turnId++, sp, t: `${mm}:${ss}`, text: seg.text });
+          texts.push(`[화자 ${sp}] ${seg.text}`);
         }
+        setAudioProgress({ current: 1, total: 1 });
+      } else {
+        // Gemini / OpenAI인 경우 파일을 WAV 청크로 분할하여 전송
+        const chunks = await chunkAudioFile(file);
+        console.log(`[audio] ${file.name} → ${chunks.length}개 청크`);
+        setAudioProgress({ current: 0, total: chunks.length });
 
-        // 다음 청크의 화자 연속성을 위한 컨텍스트 유지
-        prevContext = segs.slice(-3).map((s) => ({ sp: parseInt(s.clovaLabel) || 1, text: s.text }));
+        let prevContext: { sp: number; text: string }[] = [];
+        const endpoint = provider === "openai" ? "/api/stt-openai" : "/api/stt-gemini";
+        const headers = provider === "openai" ? openAiKeyHeader() : apiKeyHeader();
 
-        setAudioProgress({ current: i + 1, total: chunks.length });
+        for (let i = 0; i < chunks.length; i++) {
+          const form = new FormData();
+          form.append("media", chunks[i], `chunk_${i}.wav`);
+          if (prevContext.length > 0) form.append("prevContext", JSON.stringify(prevContext));
+
+          // 503/429 과부하 오류 시 최대 3회 재시도 (2s, 4s 대기)
+          let sttRes = await fetch(endpoint, { method: "POST", headers, body: form });
+          for (let attempt = 1; attempt < 3 && (sttRes.status === 503 || sttRes.status === 429); attempt++) {
+            console.warn(`[audio] 청크 ${i + 1} ${sttRes.status} → ${attempt}회 재시도`);
+            await new Promise((r) => setTimeout(r, attempt * 2000));
+            sttRes = await fetch(endpoint, { method: "POST", headers, body: form });
+          }
+          if (!sttRes.ok) throw new Error(`STT 청크 ${i + 1} 실패 (${sttRes.status}): ${await sttRes.text()}`);
+          const sttJson = await sttRes.json();
+          const chunkText: string = sttJson.text ?? "";
+          console.log(`[audio] 청크 ${i + 1}/${chunks.length}:`, chunkText.slice(0, 80));
+          if (chunkText) texts.push(chunkText);
+
+          // 세그먼트를 TurnSegment로 수집 (트랜스크립트 패널 표시용)
+          const segs: { clovaLabel: string; text: string }[] = sttJson.segments ?? [];
+          const chunkOffsetSecs = i * 60;
+          for (const seg of segs) {
+            const sp = parseInt(seg.clovaLabel) || 1;
+            const mm = String(Math.floor(chunkOffsetSecs / 60)).padStart(2, "0");
+            const ss = String(chunkOffsetSecs % 60).padStart(2, "0");
+            allTurns.push({ id: turnId++, sp, t: `${mm}:${ss}`, text: seg.text });
+          }
+
+          // 다음 청크의 화자 연속성을 위한 컨텍스트 유지
+          prevContext = segs.slice(-3).map((s) => ({ sp: parseInt(s.clovaLabel) || 1, text: s.text }));
+
+          setAudioProgress({ current: i + 1, total: chunks.length });
+        }
       }
 
       const transcript = texts.join("\n");

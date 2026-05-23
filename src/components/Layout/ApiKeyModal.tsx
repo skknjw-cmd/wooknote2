@@ -1,9 +1,9 @@
-"use client";
-
 import React, { useState } from "react";
 import {
   getApiKey, setApiKey,
   getOpenAiKey, setOpenAiKey,
+  getClovaUrl, setClovaUrl,
+  getClovaSecretKey, setClovaSecretKey,
   getSttProvider, setSttProvider,
   type SttProvider,
 } from "@/lib/apiKey";
@@ -20,6 +20,8 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
   const [provider, setProvider] = useState<SttProvider>(getSttProvider());
   const [geminiKey, setGeminiKey] = useState(getApiKey());
   const [openAiKey, setOpenAiKeyState] = useState(getOpenAiKey());
+  const [clovaUrl, setClovaUrlState] = useState(getClovaUrl());
+  const [clovaSecretKey, setClovaSecretKeyState] = useState(getClovaSecretKey());
   const [saved, setSaved] = useState(false);
   const [show, setShow] = useState(false);
 
@@ -30,6 +32,8 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
     setSttProvider(provider);
     setApiKey(geminiKey);
     setOpenAiKey(openAiKey);
+    setClovaUrl(clovaUrl);
+    setClovaSecretKey(clovaSecretKey);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -37,10 +41,22 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
     }, 800);
   }
 
+  const isSaveDisabled = saved || (
+    provider === "clova" 
+      ? (!clovaUrl.trim() || !clovaSecretKey.trim())
+      : !activeKey.trim()
+  );
+
   const masked = activeKey
     ? show
       ? activeKey
       : activeKey.slice(0, 6) + "•".repeat(Math.max(0, activeKey.length - 10)) + activeKey.slice(-4)
+    : "";
+
+  const maskedClovaKey = clovaSecretKey
+    ? show
+      ? clovaSecretKey
+      : clovaSecretKey.slice(0, 6) + "•".repeat(Math.max(0, clovaSecretKey.length - 10)) + clovaSecretKey.slice(-4)
     : "";
 
   const providerMeta = {
@@ -67,6 +83,19 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
             OpenAI Platform
           </a>
           에서 발급받을 수 있습니다. gpt-4o-transcribe-diarize를 사용합니다.
+        </>
+      ),
+    },
+    clova: {
+      label: "Clova Speech",
+      placeholder: "https://clovaspeech-gw.ncloud.com/...",
+      guide: (
+        <>
+          <a href="https://www.ncloud.com/product/aiService/clovaSpeech" target="_blank" rel="noreferrer"
+            style={{ color: "var(--info)", fontWeight: 600, textDecoration: "none" }}>
+            Naver Cloud Platform
+          </a>
+          에서 Clova Speech 빌드 후 발급받은 Invoke URL과 Secret Key를 입력하세요. 한국어 음성 인식 및 화자 분리 성능이 매우 뛰어납니다.
         </>
       ),
     },
@@ -105,7 +134,7 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
 
         {/* Provider Toggle */}
         <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-          {(["gemini", "openai"] as SttProvider[]).map((p) => (
+          {(["gemini", "openai", "clova"] as SttProvider[]).map((p) => (
             <button
               key={p}
               onClick={() => setProvider(p)}
@@ -124,43 +153,102 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
         </div>
 
         {/* Key Input */}
-        <div style={{ position: "relative", marginBottom: 10 }}>
-          <input
-            type={show ? "text" : "password"}
-            value={show ? activeKey : masked}
-            onChange={(e) => setActiveKey(e.target.value)}
-            placeholder={meta.placeholder}
-            style={{
-              width: "100%", padding: "9px 40px 9px 12px", fontSize: 13,
-              border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)",
-              background: "var(--surface)", color: "var(--ink)", outline: "none",
-              fontFamily: "var(--font-mono)", boxSizing: "border-box",
-            }}
-            onKeyDown={(e) => e.key === "Enter" && activeKey.trim() && handleSave()}
-            autoFocus
-          />
-          <button
-            onClick={() => setShow((s) => !s)}
-            style={{
-              position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-              background: "none", border: "none", cursor: "pointer", color: "var(--ink-4)", padding: 2,
-            }}
-            title={show ? "숨기기" : "보기"}
-          >
-            {show ? (
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" />
-                <circle cx="8" cy="8" r="2" />
-                <line x1="2" y1="2" x2="14" y2="14" strokeLinecap="round" />
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" />
-                <circle cx="8" cy="8" r="2" />
-              </svg>
-            )}
-          </button>
-        </div>
+        {provider === "clova" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-3)", marginBottom: 4 }}>Invoke URL</div>
+              <input
+                type="text"
+                value={clovaUrl}
+                onChange={(e) => setClovaUrlState(e.target.value)}
+                placeholder="https://clovaspeech-gw.ncloud.com/recog/v1/..."
+                style={{
+                  width: "100%", padding: "9px 12px", fontSize: 13,
+                  border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)",
+                  background: "var(--surface)", color: "var(--ink)", outline: "none",
+                  fontFamily: "var(--font-mono)", boxSizing: "border-box",
+                }}
+              />
+            </div>
+            <div style={{ position: "relative" }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-3)", marginBottom: 4 }}>Secret Key</div>
+              <div style={{ position: "relative" }}>
+                <input
+                  type={show ? "text" : "password"}
+                  value={show ? clovaSecretKey : maskedClovaKey}
+                  onChange={(e) => setClovaSecretKeyState(e.target.value)}
+                  placeholder="Secret Key"
+                  style={{
+                    width: "100%", padding: "9px 40px 9px 12px", fontSize: 13,
+                    border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)",
+                    background: "var(--surface)", color: "var(--ink)", outline: "none",
+                    fontFamily: "var(--font-mono)", boxSizing: "border-box",
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && !isSaveDisabled && handleSave()}
+                />
+                <button
+                  onClick={() => setShow((s) => !s)}
+                  style={{
+                    position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", cursor: "pointer", color: "var(--ink-4)", padding: 2,
+                  }}
+                  title={show ? "숨기기" : "보기"}
+                >
+                  {show ? (
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" />
+                      <circle cx="8" cy="8" r="2" />
+                      <line x1="2" y1="2" x2="14" y2="14" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" />
+                      <circle cx="8" cy="8" r="2" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ position: "relative", marginBottom: 10 }}>
+            <input
+              type={show ? "text" : "password"}
+              value={show ? activeKey : masked}
+              onChange={(e) => setActiveKey(e.target.value)}
+              placeholder={meta.placeholder}
+              style={{
+                width: "100%", padding: "9px 40px 9px 12px", fontSize: 13,
+                border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)",
+                background: "var(--surface)", color: "var(--ink)", outline: "none",
+                fontFamily: "var(--font-mono)", boxSizing: "border-box",
+              }}
+              onKeyDown={(e) => e.key === "Enter" && !isSaveDisabled && handleSave()}
+              autoFocus
+            />
+            <button
+              onClick={() => setShow((s) => !s)}
+              style={{
+                position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                background: "none", border: "none", cursor: "pointer", color: "var(--ink-4)", padding: 2,
+              }}
+              title={show ? "숨기기" : "보기"}
+            >
+              {show ? (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" />
+                  <circle cx="8" cy="8" r="2" />
+                  <line x1="2" y1="2" x2="14" y2="14" strokeLinecap="round" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" />
+                  <circle cx="8" cy="8" r="2" />
+                </svg>
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Guide */}
         <div style={{
@@ -199,7 +287,7 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!activeKey.trim() || saved}
+            disabled={isSaveDisabled}
             style={{ minWidth: 80 }}
           >
             {saved ? "저장됨 ✓" : "저장"}
