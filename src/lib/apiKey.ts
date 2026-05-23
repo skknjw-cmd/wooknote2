@@ -84,6 +84,11 @@ export function clovaKeyHeaders(): Record<string, string> {
   return headers;
 }
 
+const CLOVA_CREDIT_KEY = "autonote_clova_credit";
+const GEMINI_PAY_AS_YOU_GO_KEY = "autonote_gemini_pay_as_you_go";
+const GEMINI_ACCUMULATED_INPUT_KEY = "autonote_gemini_accumulated_input";
+const GEMINI_ACCUMULATED_OUTPUT_KEY = "autonote_gemini_accumulated_output";
+
 // ── STT Provider ─────────────────────────────────────────────────
 export function getSttProvider(): SttProvider {
   if (typeof window === "undefined") return "gemini";
@@ -100,4 +105,41 @@ export function sttKeyHeader(): Record<string, string> {
   if (provider === "openai") return openAiKeyHeader();
   if (provider === "clova") return clovaKeyHeaders();
   return apiKeyHeader();
+}
+
+// ── Billing Configuration & Statistics ─────────────────────────
+export function getClovaCredit(): number {
+  if (typeof window === "undefined") return 0;
+  return parseFloat(localStorage.getItem(CLOVA_CREDIT_KEY) ?? "0") || 0;
+}
+
+export function setClovaCredit(credit: number) {
+  localStorage.setItem(CLOVA_CREDIT_KEY, String(credit));
+}
+
+export function getGeminiPayAsYouGo(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(GEMINI_PAY_AS_YOU_GO_KEY) === "true";
+}
+
+export function setGeminiPayAsYouGo(val: boolean) {
+  localStorage.setItem(GEMINI_PAY_AS_YOU_GO_KEY, String(val));
+}
+
+export function getGeminiAccumulatedTokens(): { input: number; output: number } {
+  if (typeof window === "undefined") return { input: 0, output: 0 };
+  const input = parseInt(localStorage.getItem(GEMINI_ACCUMULATED_INPUT_KEY) ?? "0", 10) || 0;
+  const output = parseInt(localStorage.getItem(GEMINI_ACCUMULATED_OUTPUT_KEY) ?? "0", 10) || 0;
+  return { input, output };
+}
+
+export function accumulateGeminiTokens(input: number, output: number) {
+  const current = getGeminiAccumulatedTokens();
+  localStorage.setItem(GEMINI_ACCUMULATED_INPUT_KEY, String(current.input + input));
+  localStorage.setItem(GEMINI_ACCUMULATED_OUTPUT_KEY, String(current.output + output));
+}
+
+export function resetAccumulatedBilling() {
+  localStorage.removeItem(GEMINI_ACCUMULATED_INPUT_KEY);
+  localStorage.removeItem(GEMINI_ACCUMULATED_OUTPUT_KEY);
 }

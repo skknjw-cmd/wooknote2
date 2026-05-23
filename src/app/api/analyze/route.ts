@@ -54,7 +54,7 @@ async function callGemini(
   systemPrompt: string,
   userPrompt: string,
   signal: AbortSignal
-): Promise<string> {
+): Promise<{ text: string; usage?: { promptTokenCount: number; candidatesTokenCount: number } }> {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel(
     {
@@ -70,7 +70,14 @@ async function callGemini(
   if (signal.aborted) throw new Error("aborted");
 
   const result = await model.generateContent([systemPrompt, userPrompt]);
-  return result.response.text();
+  const text = result.response.text();
+  const usage = result.response.usageMetadata
+    ? {
+        promptTokenCount: result.response.usageMetadata.promptTokenCount ?? 0,
+        candidatesTokenCount: result.response.usageMetadata.candidatesTokenCount ?? 0,
+      }
+    : undefined;
+  return { text, usage };
 }
 
 export async function POST(req: NextRequest) {
@@ -195,6 +202,7 @@ export async function POST(req: NextRequest) {
     let lastError: unknown = null;
     let successText: string | null = null;
     let modelUsed: string | null = null;
+    let usageMetadata: { promptTokenCount: number; candidatesTokenCount: number } | undefined = undefined;
 
     // Try each model in the chain.
     outer: for (const modelName of MODEL_CHAIN) {
@@ -213,15 +221,16 @@ export async function POST(req: NextRequest) {
         }
 
         try {
-          const text = await callGemini(
+          const resultObj = await callGemini(
             apiKey,
             modelName,
             systemPrompt,
             userPrompt,
             req.signal
           );
-          successText = text;
+          successText = resultObj.text;
           modelUsed = modelName;
+          usageMetadata = resultObj.usage;
           break outer;
         } catch (err) {
           lastError = err;
@@ -267,13 +276,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const responseHeaders = new Headers();
+    if (usageMetadata) {
+      responseHeaders.set("x-gemini-input-tokens", String(usageMetadata.promptTokenCount));
+      responseHeaders.set("x-gemini-output-tokens", String(usageMetadata.candidatesTokenCount));
+    }
+
     try {
       // Strip markdown code fences if present
       const cleaned = successText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       const analysisResult = JSON.parse(cleaned);
       const sectionNames = (analysisResult.sections ?? []).map((s: { name: string }) => s.name);
       console.log(`[analyze] ok model=${modelUsed} sections=[${sectionNames.join(",")}]`);
-      return NextResponse.json(analysisResult);
+      return NextResponse.json(analysisResult, { headers: responseHeaders });
     } catch (parseError) {
       console.error("[analyze] JSON parse error. raw (first 500):", successText.slice(0, 500));
       const jsonMatch = successText.match(/\{[\s\S]*\}/);
@@ -282,14 +297,14 @@ export async function POST(req: NextRequest) {
           const analysisResult = JSON.parse(jsonMatch[0]);
           const sectionNames = (analysisResult.sections ?? []).map((s: { name: string }) => s.name);
           console.log(`[analyze] fallback ok sections=[${sectionNames.join(",")}]`);
-          return NextResponse.json(analysisResult);
+          return NextResponse.json(analysisResult, { headers: responseHeaders });
         } catch {
           /* fall through */
         }
       }
       return NextResponse.json(
         { error: "AI 응답을 처리하는 중 오류가 발생했습니다 (Invalid JSON)." },
-        { status: 500 }
+        { status: 500, headers: responseHeaders }
       );
     }
   } catch (error: unknown) {

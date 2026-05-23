@@ -26,6 +26,7 @@ import {
   openAiKeyHeader,
   clovaKeyHeaders,
   hasApiKey,
+  accumulateGeminiTokens,
 } from "@/lib/apiKey";
 import { chunkAudioFile } from "@/lib/audioChunk";
 import { useOfflineSTT } from "@/hooks/useOfflineSTT";
@@ -180,6 +181,13 @@ async function callAnalyze(
     }),
   });
   if (!res.ok) throw new Error(await res.text());
+
+  const inputTokens = parseInt(res.headers.get("x-gemini-input-tokens") ?? "0", 10);
+  const outputTokens = parseInt(res.headers.get("x-gemini-output-tokens") ?? "0", 10);
+  if (inputTokens > 0 || outputTokens > 0) {
+    accumulateGeminiTokens(inputTokens, outputTokens);
+  }
+
   return res.json();
 }
 
@@ -552,7 +560,7 @@ export default function Home() {
           onOpenNote={handleOpenNote}
           onSettings={() => setShowApiKey(true)}
         />
-        {showApiKey && <ApiKeyModal onClose={() => setShowApiKey(false)} folderName={folderName} onPickFolder={handlePickFolder} />}
+        {showApiKey && <ApiKeyModal onClose={() => setShowApiKey(false)} folderName={folderName} onPickFolder={handlePickFolder} notes={notes} />}
       </>
     );
   }
@@ -614,7 +622,7 @@ export default function Home() {
       {showExport && (
         <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />
       )}
-      {showApiKey && <ApiKeyModal onClose={() => setShowApiKey(false)} folderName={folderName} onPickFolder={handlePickFolder} />}
+      {showApiKey && <ApiKeyModal onClose={() => setShowApiKey(false)} folderName={folderName} onPickFolder={handlePickFolder} notes={notes} />}
     </>
   );
 }

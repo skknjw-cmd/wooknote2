@@ -5,23 +5,33 @@ import {
   getClovaUrl, setClovaUrl,
   getClovaSecretKey, setClovaSecretKey,
   getSttProvider, setSttProvider,
+  getClovaCredit, setClovaCredit,
+  getGeminiPayAsYouGo, setGeminiPayAsYouGo,
+  getGeminiAccumulatedTokens, resetAccumulatedBilling,
   type SttProvider,
 } from "@/lib/apiKey";
 import { isFolderPickerSupported } from "@/lib/folderStorage";
+import type { NoteRecord } from "@/types/meeting";
 
 interface ApiKeyModalProps {
   required?: boolean;
   onClose: () => void;
   folderName?: string | null;
   onPickFolder?: () => void;
+  notes?: NoteRecord[];
 }
 
-export default function ApiKeyModal({ required = false, onClose, folderName, onPickFolder }: ApiKeyModalProps) {
+export default function ApiKeyModal({ required = false, onClose, folderName, onPickFolder, notes }: ApiKeyModalProps) {
   const [provider, setProvider] = useState<SttProvider>(getSttProvider());
   const [geminiKey, setGeminiKey] = useState(getApiKey());
   const [openAiKey, setOpenAiKeyState] = useState(getOpenAiKey());
   const [clovaUrl, setClovaUrlState] = useState(getClovaUrl());
   const [clovaSecretKey, setClovaSecretKeyState] = useState(getClovaSecretKey());
+  
+  const [clovaCredit, setClovaCreditState] = useState(getClovaCredit());
+  const [geminiPayAsYouGo, setGeminiPayAsYouGoState] = useState(getGeminiPayAsYouGo());
+  const [geminiTokens, setGeminiTokens] = useState(getGeminiAccumulatedTokens());
+
   const [saved, setSaved] = useState(false);
   const [show, setShow] = useState(false);
 
@@ -34,6 +44,8 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
     setOpenAiKey(openAiKey);
     setClovaUrl(clovaUrl);
     setClovaSecretKey(clovaSecretKey);
+    setClovaCredit(clovaCredit);
+    setGeminiPayAsYouGo(geminiPayAsYouGo);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -103,6 +115,19 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
 
   const meta = providerMeta[provider];
 
+  // 요금 계산 로직
+  const totalAudioDurationSec = notes
+    ? notes.reduce((acc, note) => acc + (note.audioDuration || 0), 0)
+    : 0;
+  const rawClovaCost = Math.round((totalAudioDurationSec / 60) * 4);
+  const clovaRemainingCredit = Math.max(0, clovaCredit - rawClovaCost);
+  const actualClovaBilling = Math.max(0, rawClovaCost - clovaCredit);
+
+  const geminiInputCost = (geminiTokens.input / 1000000) * 0.075 * 1350;
+  const geminiOutputCost = (geminiTokens.output / 1000000) * 0.30 * 1350;
+  const rawGeminiCost = Math.round(geminiInputCost + geminiOutputCost);
+  const actualGeminiBilling = geminiPayAsYouGo ? rawGeminiCost : 0;
+
   return (
     <div className="modal-bg" onClick={required ? undefined : onClose}>
       <div className="api-key-modal" onClick={(e) => e.stopPropagation()}>
@@ -120,8 +145,8 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
             </svg>
           </span>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>STT 설정</div>
-            <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>음성 인식 엔진과 API 키를 설정합니다</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>STT 및 요금 설정</div>
+            <div style={{ fontSize: 11.5, color: "var(--ink-4)" }}>음성 인식 엔진과 요금제 옵션을 관리합니다</div>
           </div>
           {!required && (
             <button className="icon-btn" style={{ marginLeft: "auto" }} onClick={onClose}>
@@ -278,6 +303,100 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
             </div>
           </div>
         )}
+
+        {/* 요금 통계 대시보드 */}
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginBottom: 8 }}>API 추정 요금 및 무료 한도</div>
+          
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: "var(--ink-4)", marginBottom: 4 }}>Clova 크레딧 (원)</div>
+              <input
+                type="number"
+                value={clovaCredit || ""}
+                onChange={(e) => setClovaCreditState(Math.max(0, parseFloat(e.target.value) || 0))}
+                placeholder="예: 100000"
+                style={{
+                  width: "100%", padding: "6px 10px", fontSize: 12,
+                  border: "1px solid var(--border-strong)", borderRadius: "var(--r-sm)",
+                  background: "var(--surface)", color: "var(--ink)", outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--ink-4)", marginBottom: 4 }}>Gemini 요금 플랜</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", height: "100%", paddingLeft: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={geminiPayAsYouGo}
+                  onChange={(e) => setGeminiPayAsYouGoState(e.target.checked)}
+                  style={{ cursor: "pointer" }}
+                />
+                <span style={{ userSelect: "none" }}>유료 과금 계정(Pay-as-you-go)</span>
+              </label>
+            </div>
+          </div>
+
+          <div style={{
+            background: "var(--surface-2)", borderRadius: "var(--r-sm)",
+            padding: "10px 12px", fontSize: 12, lineHeight: 1.6, color: "var(--ink-3)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span>🎙️ Clova 누적 음성 분석 분량:</span>
+              <strong>{Math.floor(totalAudioDurationSec / 60)}분 {totalAudioDurationSec % 60}초</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, paddingLeft: 10, fontSize: 11.5, color: "var(--ink-4)" }}>
+              <span>└ 추정 원가 요금 (분당 4원):</span>
+              <span>{rawClovaCost.toLocaleString()} 원</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, paddingLeft: 10, fontSize: 11.5, color: "var(--ink-4)" }}>
+              <span>└ 남은 크레딧 잔액:</span>
+              <span style={{ color: clovaRemainingCredit > 0 ? "#10b981" : "inherit" }}>
+                {clovaRemainingCredit.toLocaleString()} 원
+              </span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, borderBottom: "1px dashed var(--border)", paddingBottom: 6 }}>
+              <span>└ <strong>최종 청구 예상 요금</strong>:</span>
+              <strong style={{ color: actualClovaBilling > 0 ? "#ef4444" : "inherit" }}>
+                {actualClovaBilling.toLocaleString()} 원
+              </strong>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span>🧠 Gemini 누적 사용 토큰:</span>
+              <strong>{(geminiTokens.input + geminiTokens.output).toLocaleString()} 토큰</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, paddingLeft: 10, fontSize: 11.5, color: "var(--ink-4)" }}>
+              <span>└ Input / Output:</span>
+              <span>{geminiTokens.input.toLocaleString()} / {geminiTokens.output.toLocaleString()}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span>└ <strong>최종 청구 예상 요금</strong>:</span>
+              <strong style={{ color: actualGeminiBilling > 0 ? "#ef4444" : "inherit" }}>
+                {geminiPayAsYouGo ? `${actualGeminiBilling.toLocaleString()} 원` : "무료 티어 (0원)"}
+              </strong>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+              <button
+                onClick={() => {
+                  if (confirm("누적 사용 요금 데이터를 초기화하시겠습니까?")) {
+                    resetAccumulatedBilling();
+                    setGeminiTokens({ input: 0, output: 0 });
+                  }
+                }}
+                style={{
+                  padding: "3px 8px", fontSize: 10.5, color: "var(--ink-4)",
+                  border: "1px solid var(--border-strong)", borderRadius: "var(--r-sm)",
+                  background: "var(--surface)", cursor: "pointer",
+                }}
+              >
+                통계 초기화
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
