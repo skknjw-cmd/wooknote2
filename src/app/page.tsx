@@ -414,37 +414,45 @@ export default function Home() {
       let turnId = 0;
 
       if (provider === "clova") {
-        // Clova Speech는 파일을 쪼개지 않고 전체 파일을 통째로 전송하여 완벽한 화자 분리와 전사를 얻습니다.
-        setAudioProgress({ current: 0, total: 1 });
-        const form = new FormData();
-        form.append("media", file);
+        // Vercel Serverless Function 페이로드 제한(4.5MB)을 회피하기 위해 파일을 120초(2분) 단위 WAV 청크로 나누어 전송합니다.
+        const chunks = await chunkAudioFile(file, 120);
+        console.log(`[audio] Clova Speech 분할 전송: ${file.name} → ${chunks.length}개 청크 (각 120초)`);
+        setAudioProgress({ current: 0, total: chunks.length });
 
-        const res = await fetch("/api/stt", {
-          method: "POST",
-          headers: clovaKeyHeaders(),
-          body: form,
-        });
+        for (let i = 0; i < chunks.length; i++) {
+          const form = new FormData();
+          form.append("media", chunks[i], `chunk_${i}.wav`);
 
-        if (!res.ok) {
-          throw new Error(`Clova Speech API 호출 실패 (${res.status}): ${await res.text()}`);
+          const res = await fetch("/api/stt", {
+            method: "POST",
+            headers: clovaKeyHeaders(),
+            body: form,
+          });
+
+          if (!res.ok) {
+            throw new Error(`Clova Speech API 청크 ${i + 1} 호출 실패 (${res.status}): ${await res.text()}`);
+          }
+
+          const sttJson = await res.json();
+          const chunkText = sttJson.text ?? "";
+          if (chunkText) texts.push(chunkText);
+
+          const segs: { clovaLabel: string; text: string; start?: number }[] = sttJson.segments ?? [];
+          const chunkOffsetSecs = i * 120; // 120초 단위 누적 오프셋
+          for (const seg of segs) {
+            const sp = parseInt(seg.clovaLabel) || 1;
+            const startMs = typeof seg.start === "number" ? seg.start : 0;
+            const absoluteSecs = chunkOffsetSecs + Math.floor(startMs / 1000);
+            const mm = String(Math.floor(absoluteSecs / 60)).padStart(2, "0");
+            const ss = String(absoluteSecs % 60).padStart(2, "0");
+            allTurns.push({ id: turnId++, sp, t: `${mm}:${ss}`, text: seg.text });
+          }
+          setAudioProgress({ current: i + 1, total: chunks.length });
         }
-
-        const sttJson = await res.json();
-        const segs: { clovaLabel: string; text: string; start?: number }[] = sttJson.segments ?? [];
-        for (const seg of segs) {
-          const sp = parseInt(seg.clovaLabel) || 1;
-          const startMs = typeof seg.start === "number" ? seg.start : 0;
-          const s = Math.floor(startMs / 1000);
-          const mm = String(Math.floor(s / 60)).padStart(2, "0");
-          const ss = String(s % 60).padStart(2, "0");
-          allTurns.push({ id: turnId++, sp, t: `${mm}:${ss}`, text: seg.text });
-          texts.push(`[화자 ${sp}] ${seg.text}`);
-        }
-        setAudioProgress({ current: 1, total: 1 });
       } else {
-        // Gemini / OpenAI인 경우 파일을 WAV 청크로 분할하여 전송
-        const chunks = await chunkAudioFile(file);
-        console.log(`[audio] ${file.name} → ${chunks.length}개 청크`);
+        // Gemini / OpenAI인 경우 파일을 120초(2분) 단위 WAV 청크로 분할하여 전송 (인식율 향상)
+        const chunks = await chunkAudioFile(file, 120);
+        console.log(`[audio] ${file.name} → ${chunks.length}개 청크 (각 120초)`);
         setAudioProgress({ current: 0, total: chunks.length });
 
         let prevContext: { sp: number; text: string }[] = [];
@@ -471,7 +479,7 @@ export default function Home() {
 
           // 세그먼트를 TurnSegment로 수집 (트랜스크립트 패널 표시용)
           const segs: { clovaLabel: string; text: string }[] = sttJson.segments ?? [];
-          const chunkOffsetSecs = i * 60;
+          const chunkOffsetSecs = i * 120; // 120초 기준 누적 오프셋
           for (const seg of segs) {
             const sp = parseInt(seg.clovaLabel) || 1;
             const mm = String(Math.floor(chunkOffsetSecs / 60)).padStart(2, "0");
