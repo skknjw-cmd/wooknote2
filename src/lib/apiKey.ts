@@ -90,12 +90,21 @@ export function clovaKeyHeaders(): Record<string, string> {
 
 /**
  * 붙여넣은 값에서 32자 hex 데이터베이스 ID를 뽑는다.
- * Notion URL, 하이픈이 든 UUID, 순수 ID를 모두 받아들인다. 못 찾으면 빈 문자열.
+ * Notion URL, 하이픈이 든 UUID, 순수 ID를 모두 받아들인다.
+ *
+ * 1. `?` 뒤(쿼리 문자열)를 먼저 버린다 — `?v=<32자 hex>` 뷰 ID가 절대 잡히지 않도록.
+ * 2. 하이픈을 제거한다(하이픈이 든 UUID 대응).
+ * 3. 뒤에 hex가 더 붙지 않는 **마지막** 32자 구간을 고른다. 제목 슬러그가
+ *    `2026-09-15-` / `DB-` / `%ED%9A%8C...-`(URL 인코딩된 `회의록`)처럼 hex 문자를
+ *    앞에 보태 hex 구간이 32자보다 길어져도, 부정 전방탐색이 실제 ID 32자에 정확히 맞는다.
+ *
+ * 못 찾으면 빈 문자열.
  */
 export function extractDatabaseId(input: string): string {
-  const compact = input.trim().replace(/-/g, "");
-  const match = compact.match(/[0-9a-fA-F]{32}/);
-  return match ? match[0] : "";
+  const withoutQuery = input.trim().split("?")[0];
+  const compact = withoutQuery.replace(/-/g, "");
+  const matches = compact.match(/[0-9a-fA-F]{32}(?![0-9a-fA-F])/g);
+  return matches ? matches[matches.length - 1] : "";
 }
 
 export function getNotionToken(): string {

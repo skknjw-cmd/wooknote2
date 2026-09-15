@@ -39,6 +39,8 @@ interface AppShellProps {
   onPickFolder?: () => void;
   notionStatus?: NotionSaveState;
   onRetryNotion?: () => void;
+  /** 이번 세션에서 녹음한 노트일 때만 true. false면 "이어 녹음" 버튼을 숨긴다. */
+  canResumeRecording?: boolean;
 }
 
 /** 저장 상태를 배너 문구와 아이콘으로 옮긴다. */
@@ -60,8 +62,10 @@ function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNo
       };
     case "unconfigured":
       return { ico: "💾", text: <span><b>로컬에 저장됨</b> · Notion 미설정</span> };
+    // 로컬 저장 실패도 이 상태를 쓴다. 문구에서 로컬 안전을 단정하지 않고,
+    // 어디까지 저장됐는지는 message가 말하게 둔다.
     case "failed":
-      return { ico: "❌", text: <span><b>Notion 저장 실패</b> · 로컬에는 저장됨 — {status.message}</span> };
+      return { ico: "❌", text: <span><b>저장 실패</b> — {status.message}</span> };
     default:
       return { ico: "⏺", text: <span><b>녹음이 종료되었습니다.</b></span> };
   }
@@ -98,6 +102,7 @@ export default function AppShell({
   onPickFolder,
   notionStatus = { kind: "idle" },
   onRetryNotion,
+  canResumeRecording = false,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
@@ -191,7 +196,9 @@ export default function AppShell({
               <span className="ico">{ico}</span>
               {text}
               <div className="actions">
-                <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
+                {canResumeRecording && (
+                  <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
+                )}
                 {canRetry && (
                   <button className="btn" onClick={onRetryNotion}>다시 시도</button>
                 )}

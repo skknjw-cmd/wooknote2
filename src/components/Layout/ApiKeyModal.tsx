@@ -361,7 +361,9 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
             Notion에서 <strong>통합(Integration)을 해당 데이터베이스에 초대</strong>해야 합니다.
             속성 이름을 <code>회의일시</code>(날짜) · <code>참석자</code>(텍스트) ·{" "}
             <code>소요시간</code>(텍스트) · <code>상태</code>(선택) · <code>입력방식</code>(선택)으로
-            만들면 함께 채워지며, 없는 속성은 건너뜁니다.
+            만들면 함께 채워지며, 없는 속성은 건너뜁니다. 이때 <code>상태</code>는 반드시{" "}
+            <strong>선택(Select)</strong> 타입으로 만드세요 — Notion 한국어 UI가 기본으로 만드는
+            상태(Status) 타입은 API가 옵션을 추가할 수 없어 건너뜁니다.
           </div>
         </div>
 

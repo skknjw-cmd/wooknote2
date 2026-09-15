@@ -91,7 +91,19 @@ export async function pushToNotion(note: NoteRecord): Promise<NotionSaveState> {
       body: JSON.stringify(noteToNotionPayload(note)),
     });
 
-    const data = (await res.json()) as NotionSaveResponse;
+    // 라우트가 NotionSaveResponse를 만들기 전에 실패하면(예: 잘못된 요청 본문) 응답 본문에
+    // ok/stage가 없다. 그대로 믿으면 배너에 사유가 빈 채로 뜨므로 모양을 먼저 확인하고,
+    // 추적이 가능하도록 HTTP 상태를 문구에 담는다.
+    const data = (await res.json().catch(() => null)) as NotionSaveResponse | null;
+
+    if (!data || typeof data.ok !== "boolean") {
+      return {
+        kind: "failed",
+        message: res.ok
+          ? `Notion 서버 응답을 해석하지 못했습니다. (HTTP ${res.status})`
+          : `Notion 저장 요청이 실패했습니다. (HTTP ${res.status})`,
+      };
+    }
 
     if (data.ok) {
       return { kind: "saved", skippedProperties: data.skippedProperties };
@@ -99,7 +111,10 @@ export async function pushToNotion(note: NoteRecord): Promise<NotionSaveState> {
     if (data.stage === "append") {
       return { kind: "partial", savedBlocks: data.savedBlocks, totalBlocks: data.totalBlocks };
     }
-    return { kind: "failed", message: data.error };
+    return {
+      kind: "failed",
+      message: data.error || `Notion 저장에 실패했습니다. (HTTP ${res.status})`,
+    };
   } catch (err) {
     return {
       kind: "failed",
