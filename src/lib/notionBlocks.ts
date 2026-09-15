@@ -105,10 +105,33 @@ export type NotionPropertySchema = Record<
   string,
   {
     type: string;
+    /** select 타입일 때만 존재. 드롭다운에 채울 옵션. */
+    select?: { options?: Array<{ name: string }> };
     /** status 타입일 때만 존재. API로 새 옵션을 만들 수 없어 기존 옵션과 대조해야 한다. */
     status?: { options?: Array<{ name: string }> };
   }
 >;
+
+/** 설정 화면 드롭다운이 쓰는 속성 정보. */
+export type NotionPropertyInfo = {
+  name: string;
+  type: string;
+  /** select·status일 때만. */
+  options?: string[];
+};
+
+/** 스키마를 설정 화면이 쓸 목록으로 바꾼다. */
+export function listProperties(schema: NotionPropertySchema): NotionPropertyInfo[] {
+  return Object.entries(schema).map(([name, prop]) => {
+    const options =
+      prop.type === "select" ? prop.select?.options
+      : prop.type === "status" ? prop.status?.options
+      : undefined;
+    return options
+      ? { name, type: prop.type, options: options.map((o) => o.name) }
+      : { name, type: prop.type };
+  });
+}
 
 type PropertyPlan = {
   /** 스키마에서 찾을 속성 이름 */

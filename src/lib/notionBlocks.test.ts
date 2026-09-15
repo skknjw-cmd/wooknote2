@@ -297,3 +297,43 @@ describe("filterProperties — status 타입", () => {
     expect(properties["참석자"]).toEqual({ rich_text: [{ text: { content: "김팀장, 이책임" } }] });
   });
 });
+
+import { listProperties } from "./notionBlocks";
+
+describe("listProperties", () => {
+  it("빈 스키마는 빈 배열", () => {
+    expect(listProperties({})).toEqual([]);
+  });
+
+  it("이름과 타입을 보존한다", () => {
+    const out = listProperties({ 이름: { type: "title" }, 회의일자: { type: "date" } });
+    expect(out).toEqual([
+      { name: "이름", type: "title" },
+      { name: "회의일자", type: "date" },
+    ]);
+  });
+
+  it("select는 옵션 이름을 뽑는다", () => {
+    const out = listProperties({
+      진행: { type: "select", select: { options: [{ name: "대기" }, { name: "완료" }] } },
+    });
+    expect(out).toEqual([{ name: "진행", type: "select", options: ["대기", "완료"] }]);
+  });
+
+  it("status도 옵션 이름을 뽑는다", () => {
+    const out = listProperties({
+      상태: { type: "status", status: { options: [{ name: "시작 전" }, { name: "진행 중" }] } },
+    });
+    expect(out).toEqual([{ name: "상태", type: "status", options: ["시작 전", "진행 중"] }]);
+  });
+
+  it("옵션이 없는 타입에는 options 키를 넣지 않는다", () => {
+    const out = listProperties({ 참석자: { type: "rich_text" } });
+    expect(out[0]).not.toHaveProperty("options");
+  });
+
+  it("select인데 options가 비어 있으면 빈 배열", () => {
+    const out = listProperties({ 진행: { type: "select", select: { options: [] } } });
+    expect(out).toEqual([{ name: "진행", type: "select", options: [] }]);
+  });
+});
