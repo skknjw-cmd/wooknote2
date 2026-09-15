@@ -67,7 +67,7 @@ describe("chunkBlocks", () => {
   });
 });
 
-import { buildBlocks } from "./notionBlocks";
+import { buildBlocks, NOTION_TEXT_LIMIT } from "./notionBlocks";
 import type { NotionMeetingPayload } from "@/types/meeting";
 
 const basePayload: NotionMeetingPayload = {
@@ -152,5 +152,19 @@ describe("buildBlocks", () => {
       turns: [{ speaker: "김팀장", time: "00:12", text: "   " }],
     });
     expect(blocks).toHaveLength(3);
+  });
+
+  it("시각이 있고 첫 청크가 2000자 꽉 찬 발화도 모든 rich_text 항목이 2000자를 넘지 않는다", () => {
+    const long = "가".repeat(2500);
+    const blocks = buildBlocks({
+      ...basePayload,
+      turns: [{ speaker: "김팀장", time: "00:12", text: long }],
+    });
+    for (const block of blocks) {
+      const richTexts = block.heading_2?.rich_text ?? block.paragraph?.rich_text ?? [];
+      for (const rt of richTexts) {
+        expect(rt.text.content.length).toBeLessThanOrEqual(NOTION_TEXT_LIMIT);
+      }
+    }
   });
 });

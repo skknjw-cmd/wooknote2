@@ -84,9 +84,12 @@ export function buildBlocks(payload: NotionMeetingPayload): NotionBlock[] {
 
     chunks.forEach((chunk, i) => {
       if (i === 0) {
+        // 접두(화자·시각)와 본문을 별개 rich_text 항목으로 분리한다.
+        // 한 항목으로 합치면 접두 + 2000자 본문이 2000자 한도를 넘을 수 있다.
         blocks.push(paragraph([
           richText(`[${turn.speaker}]`, true),
-          richText(`${prefix}${chunk}`),
+          richText(prefix),
+          richText(chunk),
         ]));
       } else {
         blocks.push(paragraph([richText(chunk)]));
