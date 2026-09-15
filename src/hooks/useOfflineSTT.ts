@@ -1,11 +1,21 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { TurnSegment, Participant } from "@/types/meeting";
+import type { Participant } from "@/types/meeting";
 import { getSttProvider, apiKeyHeader, openAiKeyHeader, clovaKeyHeaders } from "@/lib/apiKey";
 import { encodeWav } from "@/lib/audioChunk";
+import type { RawSegment } from "@/lib/turnAssembly";
 
 type ModelStatus = "idle" | "loading" | "ready";
+
+/** 청크 하나의 STT 결과를 가공 없이 내보낸다. */
+export type ChunkHandler = (chunk: { segments: RawSegment[]; chunkStartMs: number }) => void;
+
+export type RecordingHandlers = {
+  onChunk: ChunkHandler;
+  /** STT 프롬프트의 화자 힌트에 쓸 현재 참석자. 훅은 이 값을 보관하지 않는다. */
+  getParticipants: () => Participant[];
+};
 
 const CHUNK_MS = 15 * 1000;
 
@@ -14,28 +24,20 @@ interface STTState {
   modelProgress: { whisper: number; speaker: number };
   isRecording: boolean;
   elapsedMs: number;
-  turns: TurnSegment[];
-  participants: Participant[];
   sttError: string | null;
-  startRecording: () => Promise<void>;
+  recordingNoteId: string | null;
+  startRecording: (noteId: string, handlers: RecordingHandlers) => Promise<void>;
   stopRecording: () => Promise<void>;
-  getLatestTurns: () => TurnSegment[];
-  updateSpeakerName: (sp: number, name: string) => void;
-  setParticipants: (p: Participant[]) => void;
-  editTurn: (id: number, newText: string) => void;
-  splitTurn: (id: number, beforeText: string, afterText: string) => void;
 }
 
 export function useOfflineSTT(): STTState {
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [turns, setTurns] = useState<TurnSegment[]>([]);
-  const [participants, setParticipantsState] = useState<Participant[]>([]);
   const [sttError, setSttError] = useState<string | null>(null);
 
-  const turnsRef = useRef<TurnSegment[]>([]);
   const lastChunkRef = useRef<Promise<void>>(Promise.resolve());
   // 청크 간 화자 레이블 연속성 유지: 모델이 반환한 "A","B","C" → 일관된 sp 번호
+  // STT 프롬프트 힌트(prevContext)용으로도 쓰이므로 나중에 정리할 때 지우지 말 것
   const speakerLetterMapRef = useRef<Map<string, number>>(new Map());
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -46,15 +48,23 @@ export function useOfflineSTT(): STTState {
   const streamRef = useRef<MediaStream | null>(null);
   const recordStartTimeRef = useRef(0);   // Date.now() 기반 — 스로틀링에 강함
   const elapsedMsRef = useRef(0);
-  const participantsRef = useRef<Participant[]>([]);
-  const segIdRef = useRef(0);
   const prevContextRef = useRef<{ sp: number; text: string }[]>([]);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const [recordingNoteId, setRecordingNoteId] = useState<string | null>(null);
+  const onChunkRef = useRef<ChunkHandler | null>(null);
+  const getParticipantsRef = useRef<(() => Participant[]) | null>(null);
 
-  function formatTime(ms: number): string {
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    return `${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  // 화자 레이블(숫자 또는 문자)을 sp 번호로 변환한다.
+  // 숫자 레이블(Gemini)이면 그대로, 문자 레이블(OpenAI "A","B")이면 speakerLetterMapRef로 누적 매핑.
+  // prevContext 힌트 계산이 이 함수를 쓴다.
+  function labelToSp(label: string): number {
+    const parsed = parseInt(label, 10);
+    if (!isNaN(parsed)) return parsed || 1;
+    const letter = label.trim();
+    if (!speakerLetterMapRef.current.has(letter)) {
+      speakerLetterMapRef.current.set(letter, speakerLetterMapRef.current.size + 1);
+    }
+    return speakerLetterMapRef.current.get(letter)!;
   }
 
   // ── Wake Lock ───────────────────────────────────────────────
@@ -93,9 +103,10 @@ export function useOfflineSTT(): STTState {
 
       const form = new FormData();
       form.append("media", sendBlob, "chunk.wav");
-      if (participantsRef.current.length > 0) {
-        form.append("attendeeCount", String(participantsRef.current.length));
-        const names = participantsRef.current
+      const roster = getParticipantsRef.current?.() ?? [];
+      if (roster.length > 0) {
+        form.append("attendeeCount", String(roster.length));
+        const names = roster
           .filter((p) => p.name)
           .map((p) => `화자 ${p.sp}: ${p.name}`)
           .join(", ");
@@ -149,40 +160,12 @@ export function useOfflineSTT(): STTState {
       }
       setSttError(null);
 
-      const newContext: { sp: number; text: string }[] = [];
-      setTurns((prev) => {
-        const next = [...prev];
-        for (const seg of segments) {
-          if (!seg.text?.trim()) continue;
-          // 숫자 레이블(Gemini)이면 그대로, 문자 레이블(OpenAI "A","B")이면 누적 맵으로 변환
-          let sp: number;
-          const parsed = parseInt(seg.clovaLabel, 10);
-          if (!isNaN(parsed)) {
-            sp = parsed || 1;
-          } else {
-            const letter = seg.clovaLabel.trim();
-            if (!speakerLetterMapRef.current.has(letter)) {
-              speakerLetterMapRef.current.set(letter, speakerLetterMapRef.current.size + 1);
-            }
-            sp = speakerLetterMapRef.current.get(letter)!;
-          }
-          const last = next[next.length - 1];
-          if (last && last.sp === sp) {
-            next[next.length - 1] = { ...last, text: last.text + " " + seg.text.trim() };
-          } else {
-            next.push({
-              id: ++segIdRef.current,
-              sp,
-              t: formatTime(chunkStartMs),
-              text: seg.text.trim(),
-            });
-          }
-        }
-        newContext.push(...next.slice(-3).map((t) => ({ sp: t.sp, text: t.text })));
-        turnsRef.current = next;
-        return next;
-      });
-      prevContextRef.current = newContext;
+      // 가공 없이 내보낸다. 조립은 호출자(page.tsx)가 한다.
+      onChunkRef.current?.({ segments, chunkStartMs });
+      // 다음 청크의 화자 연속성 힌트. 조립된 발화 대신 가공 전 조각의 마지막 3개를 쓴다.
+      prevContextRef.current = segments
+        .slice(-3)
+        .map((s) => ({ sp: labelToSp(s.clovaLabel), text: s.text }));
     } catch (err) {
       console.error("[STT] 처리 실패:", err);
       setSttError(`STT 처리 실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -260,7 +243,10 @@ export function useOfflineSTT(): STTState {
   }, []);
 
   // ── 녹음 시작 ───────────────────────────────────────────────
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (noteId: string, handlers: RecordingHandlers) => {
+    onChunkRef.current = handlers.onChunk;
+    getParticipantsRef.current = handlers.getParticipants;
+    setRecordingNoteId(noteId);
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
     isRecordingRef.current = true;
@@ -268,6 +254,8 @@ export function useOfflineSTT(): STTState {
     elapsedMsRef.current = 0;
 
     speakerLetterMapRef.current = new Map();
+    // 새 녹음의 첫 청크가 이전 회의의 문맥을 프롬프트로 받지 않게 한다.
+    prevContextRef.current = [];
     startChunk(stream);
     await acquireWakeLock();
 
@@ -308,9 +296,17 @@ export function useOfflineSTT(): STTState {
     const stream = streamRef.current;
     streamRef.current = null;
 
+    // 세션 정체성(어느 노트를 녹음 중인가 · 청크를 누구에게 줄 것인가)은 녹음 1회 동안만
+    // 유효하다. 마지막 청크가 핸들러에 닿은 뒤에 지워, 끝난 세션의 흔적이 남지 않게 한다.
+    const clearSession = () => {
+      setRecordingNoteId(null);
+      onChunkRef.current = null;
+      getParticipantsRef.current = null;
+    };
+
     if (!recorder || recorder.state !== "recording") {
       stream?.getTracks().forEach((t) => t.stop());
-      return lastChunkRef.current;
+      return lastChunkRef.current.then(clearSession);
     }
 
     return new Promise<void>((resolve) => {
@@ -320,48 +316,10 @@ export function useOfflineSTT(): STTState {
       recorder.onstop = async () => {
         stream?.getTracks().forEach((t) => t.stop());
         await lastChunkRef.current;
+        clearSession();
         resolve();
       };
       recorder.stop();
-    });
-  }, []);
-
-  const updateSpeakerName = useCallback((sp: number, name: string) => {
-    setParticipantsState((prev) => {
-      const existing = prev.find((p) => p.sp === sp);
-      if (existing) return prev.map((p) => p.sp === sp ? { ...p, name, initials: name[0] } : p);
-      return [...prev, { sp, name, role: "", initials: name[0] }];
-    });
-  }, []);
-
-  const setParticipants = useCallback((p: Participant[]) => {
-    participantsRef.current = p;
-    setParticipantsState(p);
-  }, []);
-
-  const getLatestTurns = useCallback(() => turnsRef.current, []);
-
-  const editTurn = useCallback((id: number, newText: string) => {
-    setTurns((prev) => {
-      const next = prev.map((t) => t.id === id ? { ...t, text: newText } : t);
-      turnsRef.current = next;
-      return next;
-    });
-  }, []);
-
-  const splitTurn = useCallback((id: number, beforeText: string, afterText: string) => {
-    setTurns((prev) => {
-      const idx = prev.findIndex((t) => t.id === id);
-      if (idx === -1) return prev;
-      const original = prev[idx];
-      const newId = ++segIdRef.current;
-      const next = [...prev];
-      next.splice(idx, 1,
-        { ...original, text: beforeText },
-        { id: newId, sp: original.sp, t: original.t, text: afterText }
-      );
-      turnsRef.current = next;
-      return next;
     });
   }, []);
 
@@ -369,16 +327,10 @@ export function useOfflineSTT(): STTState {
     modelStatus: "ready",
     modelProgress: { whisper: 1, speaker: 1 },
     isRecording,
+    recordingNoteId,
     elapsedMs,
-    turns,
-    participants,
     sttError,
     startRecording,
     stopRecording,
-    getLatestTurns,
-    updateSpeakerName,
-    setParticipants,
-    editTurn,
-    splitTurn,
   };
 }
