@@ -13,6 +13,7 @@
 - **맥락 분석**: AI가 발화자별 의사결정 비중과 행동 계획을 더 정밀하게 분석합니다.
 
 ### 🧠 2. 고품질 AI 분석 및 일관성
+- **분석은 선택**: 회의 종료 시에는 분석하지 않고 Notion에 바로 저장합니다. 분석이 필요하면 결과 화면의 **다시 정리** 버튼을 누르세요.
 - **Deterministic Logic**: `Temperature 0.1` 설정을 통해 동일한 회의 내용에 대해 일관성 있고 신뢰할 수 있는 요약 결과를 보장합니다.
 - **비즈니스 개조식 문체**: 전문 컨설턴트 수준의 '~함', '~임' 어투를 사용하여 즉시 보고 가능한 퀄리티의 결과물을 생성합니다.
 
@@ -43,7 +44,11 @@ npm run dev
 앱 우측 상단의 **톱니바퀴(⚙️) 버튼**을 눌러 다음 정보를 설정하세요:
 - **Google Gemini API Key**: AI 분석 엔진용 (v2.5 Flash 모델 사용)
 - **Clova Speech**: `Invoke URL` 및 `Secret Key` (음성 인식 및 화자 분리용)
-- **Notion Integration**: `Internal Integration Token` 및 `Database ID` (자동 기록용)
+- **Notion Integration**: `Internal Integration Token` 및 `Database ID`
+  - 회의가 끝나면 AI 분석 없이 트랜스크립트가 이 데이터베이스에 바로 저장됩니다.
+  - 통합(Integration)을 해당 데이터베이스에 **초대**해야 합니다.
+  - 선택 속성: `회의일시`(날짜) · `참석자`(텍스트) · `소요시간`(텍스트) · `상태`(선택) · `입력방식`(선택). 없는 속성은 건너뜁니다.
+  - `상태`는 반드시 **선택(Select)** 타입으로 만드세요 — Notion 한국어 UI가 기본으로 만드는 상태(Status) 타입은 API가 옵션을 추가할 수 없어 건너뜁니다.
 
 ---
 

@@ -32,6 +32,7 @@ import { chunkAudioFile } from "@/lib/audioChunk";
 import { useOfflineSTT } from "@/hooks/useOfflineSTT";
 import { saveNote as dbSave, getNotes as dbGetNotes } from "@/lib/db";
 import { saveNoteToFolder, pickSaveFolder, getSaveFolderName } from "@/lib/folderStorage";
+import { pushToNotion } from "@/lib/notionSave";
 import type {
   NoteRecord,
   Participant,
@@ -39,6 +40,7 @@ import type {
   AnalysisResult,
   TurnSegment,
   DiscussionItem,
+  NotionSaveState,
 } from "@/types/meeting";
 
 type AppScreen = "mode-select" | "roster" | "live" | "text" | "audio" | "video";
@@ -209,6 +211,11 @@ export default function Home() {
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioProgress, setAudioProgress] = useState<{ current: number; total: number } | undefined>();
   const [analyzing, setAnalyzing] = useState(false);
+  const [notionStatus, setNotionStatus] = useState<NotionSaveState>({ kind: "idle" });
+  // 이번 세션에서 live 녹음으로 만든 노트의 id. useOfflineSTT의 턴 버퍼는 페이지 세션 내내
+  // 누적되므로, 사이드바로 연 예전 노트에 "이어 녹음"을 허용하면 그 노트의 트랜스크립트가
+  // 다른 회의의 턴으로 덮어써져 IndexedDB·.md·Notion까지 되돌릴 수 없이 저장된다.
+  const liveNoteId = useRef<string | null>(null);
 
   useEffect(() => {
     dbGetNotes().then((loaded) => { if (loaded.length) setNotes(loaded); });
@@ -243,6 +250,43 @@ export default function Home() {
     saveNoteToFolder(updated).catch(console.error);
   }
 
+  /**
+   * 입력이 끝난 노트를 확정 저장한다.
+   *
+   * 순서 보장: IndexedDB 쓰기를 **await로 성공을 확인한 뒤에만** Notion을 시도한다.
+   * 따라서 Notion 단계의 배너가 "로컬에는 저장됨"이라고 말할 때 그 말은 언제나 참이다.
+   * 로컬 저장이 실패하면 Notion은 건드리지 않고 로컬 실패를 그대로 알린다.
+   * (폴더 .md 쓰기는 사용자가 폴더를 고르지 않았을 수 있는 best-effort라 기다리지 않는다.)
+   */
+  async function finalizeNote(note: NoteRecord) {
+    updateNoteState(note);
+    saveNoteToFolder(note).catch(console.error);
+
+    try {
+      await dbSave(note);
+    } catch (err) {
+      console.error("[finalize] 로컬 저장 실패:", err);
+      setNotionStatus({
+        kind: "localFailed",
+        message:
+          "로컬(IndexedDB) 저장에 실패해 Notion 저장을 건너뜁니다. 회의 내용이 이 브라우저에 남지 않으니 지금 내보내기로 파일을 받아두세요.",
+      });
+      return;
+    }
+
+    setNotionStatus({ kind: "saving" });
+    setNotionStatus(await pushToNotion(note));
+  }
+
+  async function handleRetryNotion() {
+    // handleOpenNote가 노트 전환 시 notionStatus를 idle로 되돌리므로, 상태가 idle이 아닌 동안
+    // currentNote는 방금 저장한 그 노트다. 화자명 수정 등 이후 편집까지 반영해 다시 올린다.
+    const note = currentNote;
+    if (!note) return;
+    setNotionStatus({ kind: "saving" });
+    setNotionStatus(await pushToNotion(note));
+  }
+
   function handleSave() {
     if (currentNote) saveNote(currentNote);
   }
@@ -269,6 +313,10 @@ export default function Home() {
       setCurrentNote(note);
       setAppMode("review");
       setScreen("live");
+      // 노트를 바꾸면 이전 노트의 Notion 저장 상태가 남아 오해를 부르므로 초기화한다.
+      setNotionStatus({ kind: "idle" });
+      // 이 노트는 이번 세션의 녹음 대상이 아니므로 "이어 녹음"을 막는다.
+      liveNoteId.current = null;
     }
   }
 
@@ -276,6 +324,7 @@ export default function Home() {
 
   async function handleStart(roster: Participant[]) {
     const note = emptyNote("live");
+    liveNoteId.current = note.id;
     stt.setParticipants(roster);
     setCurrentNote({ ...note, participants: roster });
     setKeywords([]);
@@ -291,7 +340,9 @@ export default function Home() {
   }
 
   async function handleSkip() {
-    setCurrentNote(emptyNote("live"));
+    const note = emptyNote("live");
+    liveNoteId.current = note.id;
+    setCurrentNote(note);
     setKeywords([]);
     setAppMode("live");
     resetPending();
@@ -347,12 +398,32 @@ export default function Home() {
 
   async function handleToggleRecording() {
     if (stt.isRecording) {
+      const elapsedMs = stt.elapsedMs;
       await stt.stopRecording();
       setAppMode("review");
       if (currentNote) {
-        await analyzeFromTurns(currentNote, stt.getLatestTurns(), stt.participants);
+        // AI 분석은 하지 않는다. 사용자가 "다시 정리"를 누를 때만 실행된다.
+        const turns = stt.getLatestTurns();
+        // 세션 턴 버퍼가 비었는데 노트에 이미 트랜스크립트가 있으면 덮어쓰지 않는다.
+        // 확정 저장은 IndexedDB·폴더·Notion까지 나가므로 되돌릴 수 없다.
+        const hasExisting = (currentNote.segments?.length ?? 0) > 0;
+        const segments = turns.length === 0 && hasExisting ? currentNote.segments! : turns;
+        await finalizeNote({
+          ...currentNote,
+          participants: stt.participants,
+          segments,
+          audioDuration: elapsedMs,
+        });
       }
     } else {
+      // 이번 세션에서 녹음한 노트가 아니면 이어 녹음을 막는다. STT 턴 버퍼가 노트별로
+      // 분리돼 있지 않아, 다른 회의의 턴이 이 노트의 트랜스크립트를 덮어쓰기 때문이다.
+      // (배너의 "이어 녹음" 버튼은 이미 숨기지만, 트랜스크립트 패널 하단의 녹음 바도
+      //  같은 핸들러를 부르므로 여기서 함께 막는다.)
+      if (currentNote && currentNote.id !== liveNoteId.current) {
+        alert("이 노트에는 이어 녹음할 수 없습니다.\n새 노트를 만들어 녹음해주세요.");
+        return;
+      }
       stt.startRecording().catch(console.error);
       setAppMode("live");
     }
@@ -378,27 +449,24 @@ export default function Home() {
   async function handleTextSubmit(data: TextSubmitData) {
     const note = currentNote ?? emptyNote("text");
     if (!currentNote) setCurrentNote(note);
-    if (!hasApiKey()) {
-      alert("Gemini API 키가 설정되지 않았습니다.\n우상단 설정에서 API 키를 입력해주세요.");
-      return;
-    }
+
+    // AI 분석 없이 바로 저장한다. 분석은 "다시 정리" 버튼에서만 실행된다.
+    // 여기서 analyzing은 AI 호출이 아니라 finalizeNote의 Notion 저장 진행 상태를 나타낸다
+    // (버튼 스피너 표시 + 중복 클릭으로 인한 Notion 페이지 중복 생성 방지).
+    const textTurns = parseTextToTurns(data.text);
     setAnalyzing(true);
     try {
-      const result = await callAnalyze(data.text, {
-        title: data.title,
-        date: data.date || new Date().toLocaleDateString("ko-KR"),
-        attendees: "미정",
+      await finalizeNote({
+        ...note,
+        segments: textTurns,
+        title: data.title || note.title,
+        meetingDate: data.date || note.meetingDate,
       });
-      const textTurns = parseTextToTurns(data.text);
-      saveNote(applyAnalysis({ ...note, segments: textTurns, title: data.title || note.title }, result));
-      setAppMode("review");
-      setScreen("live");
-    } catch (err) {
-      console.error("분석 실패:", err);
-      alert("AI 분석 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
     } finally {
       setAnalyzing(false);
     }
+    setAppMode("review");
+    setScreen("live");
   }
 
   // ── Audio file upload mode ──────────────────────────────────────────────────
@@ -417,13 +485,14 @@ export default function Home() {
         throw new Error("Clova Speech API 설정이 불완전합니다. 설정에서 Invoke URL과 Secret Key를 확인해주세요.");
       }
 
-      const texts: string[] = [];
       const allTurns: TurnSegment[] = [];
       let turnId = 0;
+      let audioDurationMs = 0;
 
       if (provider === "clova") {
         // Vercel Serverless Function 페이로드 제한(4.5MB)을 회피하기 위해 파일을 120초(2분) 단위 WAV 청크로 나누어 전송합니다.
-        const chunks = await chunkAudioFile(file, 120);
+        const { chunks, durationMs } = await chunkAudioFile(file, 120);
+        audioDurationMs = durationMs;
         console.log(`[audio] Clova Speech 분할 전송: ${file.name} → ${chunks.length}개 청크 (각 120초)`);
         setAudioProgress({ current: 0, total: chunks.length });
 
@@ -442,8 +511,6 @@ export default function Home() {
           }
 
           const sttJson = await res.json();
-          const chunkText = sttJson.text ?? "";
-          if (chunkText) texts.push(chunkText);
 
           const segs: { clovaLabel: string; text: string; start?: number }[] = sttJson.segments ?? [];
           const chunkOffsetSecs = i * 120; // 120초 단위 누적 오프셋
@@ -459,7 +526,8 @@ export default function Home() {
         }
       } else {
         // Gemini / OpenAI인 경우 파일을 120초(2분) 단위 WAV 청크로 분할하여 전송 (인식율 향상)
-        const chunks = await chunkAudioFile(file, 120);
+        const { chunks, durationMs } = await chunkAudioFile(file, 120);
+        audioDurationMs = durationMs;
         console.log(`[audio] ${file.name} → ${chunks.length}개 청크 (각 120초)`);
         setAudioProgress({ current: 0, total: chunks.length });
 
@@ -483,7 +551,6 @@ export default function Home() {
           const sttJson = await sttRes.json();
           const chunkText: string = sttJson.text ?? "";
           console.log(`[audio] 청크 ${i + 1}/${chunks.length}:`, chunkText.slice(0, 80));
-          if (chunkText) texts.push(chunkText);
 
           // 세그먼트를 TurnSegment로 수집 (트랜스크립트 패널 표시용)
           const segs: { clovaLabel: string; text: string }[] = sttJson.segments ?? [];
@@ -502,14 +569,13 @@ export default function Home() {
         }
       }
 
-      const transcript = texts.join("\n");
-      const result = await callAnalyze(transcript, {
+      // AI 분석 없이 바로 저장한다. 분석은 "다시 정리" 버튼에서만 실행된다.
+      await finalizeNote({
+        ...note,
+        segments: allTurns,
         title: file.name.replace(/\.[^.]+$/, ""),
-        date: new Date().toLocaleDateString("ko-KR"),
-        attendees: "미정",
+        audioDuration: audioDurationMs,
       });
-      const updated = applyAnalysis({ ...note, segments: allTurns, title: file.name.replace(/\.[^.]+$/, "") }, result);
-      saveNote(updated);
       setAppMode("review");
       setScreen("live");
     } catch (err) {
@@ -618,6 +684,9 @@ export default function Home() {
         analyzing={analyzing}
         folderName={folderName}
         onPickFolder={handlePickFolder}
+        notionStatus={notionStatus}
+        onRetryNotion={handleRetryNotion}
+        canResumeRecording={!!currentNote && currentNote.id === liveNoteId.current}
       />
       {showExport && (
         <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />
