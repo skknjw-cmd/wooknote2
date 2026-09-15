@@ -296,9 +296,17 @@ export function useOfflineSTT(): STTState {
     const stream = streamRef.current;
     streamRef.current = null;
 
+    // 세션 정체성(어느 노트를 녹음 중인가 · 청크를 누구에게 줄 것인가)은 녹음 1회 동안만
+    // 유효하다. 마지막 청크가 핸들러에 닿은 뒤에 지워, 끝난 세션의 흔적이 남지 않게 한다.
+    const clearSession = () => {
+      setRecordingNoteId(null);
+      onChunkRef.current = null;
+      getParticipantsRef.current = null;
+    };
+
     if (!recorder || recorder.state !== "recording") {
       stream?.getTracks().forEach((t) => t.stop());
-      return lastChunkRef.current;
+      return lastChunkRef.current.then(clearSession);
     }
 
     return new Promise<void>((resolve) => {
@@ -308,6 +316,7 @@ export function useOfflineSTT(): STTState {
       recorder.onstop = async () => {
         stream?.getTracks().forEach((t) => t.stop());
         await lastChunkRef.current;
+        clearSession();
         resolve();
       };
       recorder.stop();

@@ -209,6 +209,10 @@ export default function Home() {
 
   const [pendingTurnCount, setPendingTurnCount] = useState(0);
   const prevTurnsLen = useRef(0);
+  // notes의 최신본. 녹음 중지는 마지막 청크를 수 초 기다리는데, 그동안 사용자가 제목·메모를
+  // 고치면 클릭 시점에 캡처된 notes 배열은 이미 옛날 것이다. 그걸로 확정 저장하면 편집이
+  // 되돌려진 채 IndexedDB·.md·Notion까지 나간다. await 뒤에는 이 ref에서 읽는다.
+  const notesRef = useRef<NoteRecord[]>([]);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioProgress, setAudioProgress] = useState<{ current: number; total: number } | undefined>();
   const [analyzing, setAnalyzing] = useState(false);
@@ -238,6 +242,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+
+  useEffect(() => {
     const len = currentNote?.segments.length ?? 0;
     const added = len - prevTurnsLen.current;
     if (added > 0) {
@@ -251,12 +259,52 @@ export default function Home() {
     prevTurnsLen.current = currentNote?.segments.length ?? 0;
   }
 
-  function updateNoteState(updated: NoteRecord) {
-    setCurrentNote(updated);
+  /** 노트 목록에 반영한다. 목록에 없으면 맨 앞에 넣는다. */
+  function upsertNote(updated: NoteRecord) {
     setNotes((prev) => {
       const exists = prev.find((n) => n.id === updated.id);
       return exists ? prev.map((n) => (n.id === updated.id ? updated : n)) : [updated, ...prev];
     });
+  }
+
+  function updateNoteState(updated: NoteRecord) {
+    setCurrentNote(updated);
+    upsertNote(updated);
+  }
+
+  /**
+   * 목록은 갱신하되 화면은 빼앗지 않는다. 보고 있는 노트가 그 노트일 때만 화면도 바꾼다.
+   *
+   * 녹음 중지가 마지막 청크를 기다리는 동안 사용자가 다른 노트를 열었다면 currentNote는
+   * 남의 노트다. 거기에 setCurrentNote(녹음하던 노트)를 하면 보던 화면이 튕겨 나가고,
+   * 새 발화 배지 기준선(prevTurnsLen)이 그 노트 기준으로 잡혀 있어 엉뚱한 "+N"이 뜬다.
+   */
+  function updateNoteKeepingView(updated: NoteRecord) {
+    upsertNote(updated);
+    setCurrentNote((cur) => (cur && cur.id === updated.id ? updated : cur));
+  }
+
+  /**
+   * 새 녹음/중지 요청을 지금 막아야 하는가. 막아야 하면 안내를 띄우고 true를 돌려준다.
+   *
+   * beginRecording으로 가는 입구가 셋(토글 · handleStart · handleSkip)이라 조건을 여기 모은다.
+   * - "new-note": 새 노트로 녹음을 시작하는 입구. 다른 녹음이 돌고 있거나, 중지가 마지막
+   *   청크를 기다리는 중이면 막는다. beginRecording이 세션 ref 일곱 개를 갈아엎기 때문에,
+   *   그 창에서 새 녹음을 시작하면 앞 회의의 마지막 청크가 새 노트에 조립되고 앞 회의는
+   *   어디에도 저장되지 않은 채 사라진다.
+   * - { noteId }: 녹음 토글. 보고 있는 노트가 녹음 중인 노트와 다를 때만 막는다.
+   *   같은 노트면 중지해야 하므로 통과시키고, 재진입은 각 분기의 stoppingRef가 막는다.
+   */
+  function refuseWhileRecording(target: "new-note" | { noteId: string | null }): boolean {
+    const blocked =
+      target === "new-note"
+        ? stt.isRecording || stoppingRef.current
+        : stt.isRecording && !!stt.recordingNoteId && !!target.noteId && stt.recordingNoteId !== target.noteId;
+    if (blocked) {
+      alert("이미 다른 노트를 녹음 중입니다. 먼저 그 녹음을 종료해주세요.");
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -286,6 +334,11 @@ export default function Home() {
 
   /** 청크 하나가 도착했을 때 녹음 중인 노트에 조립해 넣는다. */
   function handleChunk(noteId: string, chunk: { segments: RawSegment[]; chunkStartMs: number }) {
+    // 이미 끝났거나 다른 노트로 바뀐 세션의 청크는 버린다. 훅의 lastChunkRef는 슬롯이
+    // 하나라 중지는 가장 최근 청크만 기다린다. 15초 전 청크의 요청이 늦게 끝나면 확정
+    // 저장이 세션 ref를 비운 뒤에 여기로 들어와, 300발화짜리 노트를 두 발화로 덮어쓴다.
+    if (recordingNoteRef.current?.id !== noteId) return;
+
     const isFirst = sessionFirstChunk.current;
     sessionFirstChunk.current = false;
 
@@ -373,7 +426,8 @@ export default function Home() {
    * (폴더 .md 쓰기는 사용자가 폴더를 고르지 않았을 수 있는 best-effort라 기다리지 않는다.)
    */
   async function finalizeNote(note: NoteRecord) {
-    updateNoteState(note);
+    // 보고 있는 노트가 아니면 화면을 바꾸지 않는다(updateNoteKeepingView 주석 참고).
+    updateNoteKeepingView(note);
     saveNoteToFolder(note).catch(console.error);
 
     try {
@@ -440,6 +494,8 @@ export default function Home() {
   // ── Roster (live mode setup) ────────────────────────────────────────────────
 
   async function handleStart(roster: Participant[]) {
+    // 상태를 하나도 바꾸기 전에 막는다. 중지 대기 중에 새 녹음을 시작하면 두 회의가 다 깨진다.
+    if (refuseWhileRecording("new-note")) return;
     const note = { ...emptyNote("live"), participants: roster };
     // 녹음 중인 노트도 목록에 넣는다. 그래야 사이드바에 보이고, 청크가 도착할 때
     // setNotes의 map이 이 노트를 찾아 발화를 채울 수 있다.
@@ -460,6 +516,8 @@ export default function Home() {
   }
 
   async function handleSkip() {
+    // handleStart와 같은 이유로, 화면 전환도 상태 변경도 하기 전에 막는다.
+    if (refuseWhileRecording("new-note")) return;
     const note = emptyNote("live");
     updateNoteState(note);
     setKeywords([]);
@@ -522,10 +580,7 @@ export default function Home() {
     // 아래 두 분기(중지/시작) 중 어느 쪽으로도 보내지 않고 여기서 막는다 — 상태를
     // 하나도 바꾸기 전에. 그렇지 않으면 이 토글은 무조건 "녹음 중인 노트"를 중지시켜
     // 사용자가 B를 보며 누른 녹음 버튼이 A의 녹음을 조용히 종료해버린다.
-    if (stt.isRecording && stt.recordingNoteId && currentNote && stt.recordingNoteId !== currentNote.id) {
-      alert("이미 다른 노트를 녹음 중입니다. 먼저 그 녹음을 종료해주세요.");
-      return;
-    }
+    if (refuseWhileRecording({ noteId: currentNote?.id ?? null })) return;
     if (stt.isRecording) {
       // 이미 중지 처리 중이면 아무것도 하지 않는다.
       if (stoppingRef.current) return;
@@ -534,6 +589,9 @@ export default function Home() {
       // 라이브 모드는 await 전에 벗어난다. 마지막 청크를 기다리는 수 초 동안
       // 화면이 계속 "녹음 중"처럼 보이면 사용자가 다시 누르게 된다.
       setAppMode("review");
+      // 마지막 청크를 기다리는 수 초 동안 배너가 "녹음이 종료되었습니다"(idle)를 띄우면
+      // 아직 아무것도 저장되지 않았는데 끝났다고 거짓말을 하는 셈이다. 저장 중으로 먼저 바꾼다.
+      setNotionStatus({ kind: "saving" });
       try {
         await stt.stopRecording();
 
@@ -541,10 +599,17 @@ export default function Home() {
         // 다른 노트를 열어 보고 있었다면 currentNote는 남의 노트이고, 그걸 확정 저장하면
         // IndexedDB·.md·Notion까지 엉뚱한 내용이 나간다.
         const rec = recordingNoteRef.current;
-        if (!rec) return;
+        // 저장할 세션이 없으면 "저장 중" 배너를 걷어낸다. 저장할 것이 없는데 저장 중이라고
+        // 계속 말하고 있으면 그것도 거짓말이다.
+        if (!rec) {
+          setNotionStatus({ kind: "idle" });
+          return;
+        }
         // 녹음하던 노트의 최신본을 목록에서 가져온다. 녹음 중 제목·메모·To-Do를 고쳤다면
         // 그 편집이 여기 들어 있다. 녹음이 소유한 필드만 그 위에 덮어쓴다.
-        const latest = notes.find((n) => n.id === rec.id) ?? rec;
+        // notes가 아니라 notesRef에서 읽는다. notes는 버튼을 누른 시점에 캡처된 배열이라
+        // 중지를 기다리는 동안 들어온 편집이 빠져 있고, 그대로 저장하면 편집이 되돌려진다.
+        const latest = notesRef.current.find((n) => n.id === rec.id) ?? rec;
         // AI 분석은 하지 않는다. 사용자가 "다시 정리"를 누를 때만 실행된다.
         await finalizeNote({
           ...latest,
@@ -567,8 +632,14 @@ export default function Home() {
       if (stoppingRef.current) return;
       const note = currentNote;
       if (!note) return;
-      beginRecording(note).catch(console.error);
-      setAppMode("live");
+      // 마이크가 거부되면 라이브 모드로 넘어가지 않고 이유를 알린다. 예전에는 실패를
+      // console로만 흘려보내고 화면만 라이브로 바꿔, 아무 일도 일어나지 않는 것처럼 보였다.
+      try {
+        await beginRecording(note);
+        setAppMode("live");
+      } catch {
+        alert("마이크 접근 권한이 필요합니다.");
+      }
     }
   }
 

@@ -120,6 +120,23 @@ describe("assembleTurns", () => {
     expect(out[0].sp).toBe(3);
   });
 
+  // ── 청크 경계를 넘는 병합 ──
+
+  it("첫 청크가 아니면 직전 청크의 같은 화자 발화에 이어붙인다", () => {
+    // 한 사람이 15초 경계를 넘어 계속 말하는 경우. 여기서 새 발화를 만들면 한 사람의
+    // 말이 청크마다 토막 난다. prev가 비어 있지 않고 마지막 발화의 sp가 같아야 검증된다.
+    const prev = [turn(3, 2, "00:15", "앞 청크에서 하던 말")];
+    const out = assembleTurns(
+      prev,
+      [seg("2", "이어서 하는 말")],
+      opts({ chunkStartMs: 30_000, isFirstChunkOfSession: false }),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe(3);
+    expect(out[0].t).toBe("00:15");
+    expect(out[0].text).toBe("앞 청크에서 하던 말 이어서 하는 말");
+  });
+
   // ── 이어 녹음 첫 청크 ──
 
   it("이어 녹음 첫 청크는 화자가 같아도 이전 세션 발화에 합치지 않는다", () => {

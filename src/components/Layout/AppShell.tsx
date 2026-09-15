@@ -48,7 +48,9 @@ interface AppShellProps {
 function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNode } {
   switch (status.kind) {
     case "saving":
-      return { ico: "⏳", text: <span><b>저장 중…</b> Notion에 기록하고 있습니다.</span> };
+      // 중지 직후의 마지막 음성 처리와 그 뒤의 저장을 한 문구로 덮는다. 두 단계 모두
+      // "아직 저장되지 않았다"는 같은 사실을 말해야 하므로 Notion만 집어 말하지 않는다.
+      return { ico: "⏳", text: <span><b>저장 중…</b> 마지막 음성을 처리하고 저장하는 중입니다.</span> };
     case "saved":
       return {
         ico: "✅",
