@@ -170,3 +170,59 @@ export type QuoteCard = {
 
 /** 노트 입력 방식 */
 export type EntryMethod = "live" | "text" | "audio" | "video";
+
+// ── Notion 저장 ──
+
+/** Notion 페이지 본문에 들어갈 발화 1개. speaker는 이미 실명으로 해석된 상태. */
+export type NotionTurn = {
+  speaker: string; // "김팀장" 또는 "화자 2"
+  time: string;    // "00:12" — 빈 문자열 가능
+  text: string;
+};
+
+/**
+ * 클라이언트가 /api/notion 으로 보내는 페이로드.
+ * NoteRecord를 그대로 보내지 않는 이유: audioBlob(Blob)은 JSON 직렬화가 불가능하고
+ * 서버가 speakerMapping 해석 규칙을 알 필요도 없다.
+ */
+export type NotionMeetingPayload = {
+  title: string;
+  meetingDate: string;      // "2026-09-15" — Notion date 속성용 ISO date
+  location?: string;
+  attendees: string[];
+  durationText: string;     // "1:23:45" — 빈 문자열 가능
+  entryMethod: EntryMethod;
+  turns: NotionTurn[];
+};
+
+/** /api/notion 응답. */
+export type NotionSaveResponse =
+  | {
+      ok: true;
+      pageId: string;
+      totalBlocks: number;
+      skippedProperties: string[];
+      dataSourceName: string;
+    }
+  | {
+      ok: false;
+      stage: "append";
+      pageId: string;
+      savedBlocks: number;
+      totalBlocks: number;
+      error: string;
+    }
+  | {
+      ok: false;
+      stage: "auth" | "schema" | "create";
+      error: string;
+    };
+
+/** 화면 배너가 표시하는 저장 상태. */
+export type NotionSaveState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved"; skippedProperties: string[] }
+  | { kind: "partial"; savedBlocks: number; totalBlocks: number }
+  | { kind: "unconfigured" }
+  | { kind: "failed"; message: string };
