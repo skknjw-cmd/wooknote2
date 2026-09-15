@@ -62,7 +62,7 @@
       ↓ listProperties(schema)     ← 순수 함수
   { dataSourceId, dataSourceName, properties: [{name, type, options?}] }
       ↓
-  매핑 드롭다운 5줄 → [매핑 저장] → localStorage
+  매핑 드롭다운 5줄 → 모달의 [저장]이 자격증명과 함께 localStorage에 기록
 
 [회의 종료]
   pushToNotion(note)
@@ -290,9 +290,26 @@ Notion 부분을 **토큰·DB ID 입력란까지 통째로** `NotionConnectionPa
 
 ### 5.2 저장 주체
 
-자격증명은 지금처럼 **모달의 [저장]** 이, 매핑은 **패널 안의 [매핑 저장]** 이 처리한다.
+**모달의 [저장] 하나가 자격증명과 매핑을 함께 저장한다.** 패널에는 저장 버튼을 두지 않는다.
 
-버튼이 둘인 것이 어색해 보이지만, 패널 안에서 `연결 테스트 → 매핑 고르기 → 매핑 저장`이 하나의 흐름으로 닫히는 편이 읽힌다. 매핑은 연결 테스트 결과에 의존하므로 모달 전체 저장에 묶으면 "테스트를 안 했는데 매핑이 저장됨" 같은 상태가 생긴다.
+패널은 매핑 상태를 위로 올려보내고 저장은 모달이 한다.
+
+```tsx
+<NotionConnectionPanel
+  token={notionToken}
+  databaseId={notionDbId}
+  mapping={notionMapping}
+  onTokenChange={setNotionTokenState}
+  onDatabaseIdChange={setNotionDbIdState}
+  onMappingChange={setNotionMappingState}
+/>
+```
+
+패널에 남는 버튼은 **[연결 테스트] 하나뿐**이다. 조회이지 저장이 아니므로 라벨 그대로 읽히고, 저장 버튼과 헷갈릴 여지가 없다.
+
+**[취소]의 의미가 일관돼진다.** 저장 버튼이 둘이면 취소했을 때 "매핑은 이미 저장됐고 자격증명만 버려지는" 반쪽 상태가 생긴다. 하나로 합치면 취소는 이 모달에서 만진 전부를 버린다.
+
+연결 테스트를 하지 않고 저장해도 문제되지 않는다. 테스트 전에는 드롭다운이 뜨지 않으므로 매핑 상태가 바뀔 수 없고, localStorage에 있던 값이 그대로 다시 쓰일 뿐이다.
 
 ### 5.3 화면
 
@@ -309,8 +326,9 @@ Notion 부분을 **토큰·DB ID 입력란까지 통째로** `NotionConnectionPa
             소요시간   [(사용 안 함) ▾]
             상태       [진행 ▾]  옵션 [대기 ▾]
             입력방식   [(자동) ▾]
-            ─────────────────────────────
-            [매핑 저장]
+
+─────────────────────────────────────────
+                            [취소]  [저장]   ← 모달 하단. 자격증명과 매핑을 함께 저장
 ```
 
 ### 5.4 드롭다운 구성
