@@ -464,4 +464,12 @@ describe("filterProperties — 매핑", () => {
     expect(properties["소요시간용"]).toEqual({ rich_text: [{ text: { content: "1:23:45" } }] });
     expect(skipped.some((s) => s.includes("같은 속성"))).toBe(false);
   });
+
+  it("선택형 필드가 title 속성과 같은 이름을 가리키면 충돌 사유에 undefined가 아니라 '이름'이 찍힌다", () => {
+    const schema = { 이름: { type: "title" } };
+    const fields: Fields = { status: { property: "이름" } };
+    const { properties, skipped } = filterProperties(schema, payload, fields);
+    expect(properties["이름"]).toEqual({ title: [{ text: { content: "주간 회의" } }] });
+    expect(skipped).toContain("상태(→이름: 이름와 같은 속성)");
+  });
 });

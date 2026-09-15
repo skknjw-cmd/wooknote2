@@ -187,6 +187,7 @@ export function filterProperties(
   const titleName = Object.keys(schema).find((k) => schema[k].type === "title");
   if (titleName) {
     properties[titleName] = { title: [{ text: { content: payload.title } }] };
+    claimedBy[titleName] = "이름";
   } else {
     skipped.push("이름(title)");
   }
