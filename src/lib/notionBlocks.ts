@@ -101,7 +101,14 @@ export function buildBlocks(payload: NotionMeetingPayload): NotionBlock[] {
 }
 
 /** dataSources.retrieve()가 돌려주는 속성 스키마 중 이 코드가 쓰는 부분만. */
-export type NotionPropertySchema = Record<string, { type: string }>;
+export type NotionPropertySchema = Record<
+  string,
+  {
+    type: string;
+    /** status 타입일 때만 존재. API로 새 옵션을 만들 수 없어 기존 옵션과 대조해야 한다. */
+    status?: { options?: Array<{ name: string }> };
+  }
+>;
 
 type PropertyPlan = {
   /** 스키마에서 찾을 속성 이름 */
@@ -111,6 +118,32 @@ type PropertyPlan = {
   /** 채울 값. null이면 값이 없어 건너뜀(skipped에 넣지 않음) */
   value: unknown | null;
 };
+
+/**
+ * 선택형 속성(select 또는 status)에 넣을 값을 정한다.
+ *
+ * select는 없는 옵션을 Notion이 자동으로 만들어 주지만, status는 API로 옵션을
+ * 추가할 수 없다. 그래서 status는 기존 옵션과 이름이 일치할 때만 값을 넣는다.
+ * Notion 한글 UI가 기본 제공하는 `상태`가 바로 이 status 타입이다.
+ *
+ * 넣을 수 없으면 reason을 돌려주고, reason이 빈 문자열이면 속성이 없거나
+ * 선택형이 아니라는 뜻이다(기존처럼 이름만 기록한다).
+ */
+function resolveChoice(
+  prop: NotionPropertySchema[string] | undefined,
+  optionName: string,
+): { value: unknown } | { reason: string } {
+  if (prop?.type === "select") {
+    return { value: { select: { name: optionName } } };
+  }
+  if (prop?.type === "status") {
+    const has = prop.status?.options?.some((o) => o.name === optionName) ?? false;
+    return has
+      ? { value: { status: { name: optionName } } }
+      : { reason: `status 옵션 "${optionName}" 없음` };
+  }
+  return { reason: "" };
+}
 
 /**
  * 데이터 소스 스키마에 실제로 존재하고 타입까지 맞는 속성만 남긴다.
@@ -136,8 +169,6 @@ export function filterProperties(
     { name: "회의일시", type: "date", value: payload.meetingDate ? { date: { start: payload.meetingDate } } : null },
     { name: "참석자", type: "rich_text", value: attendeesText ? { rich_text: [{ text: { content: attendeesText } }] } : null },
     { name: "소요시간", type: "rich_text", value: payload.durationText ? { rich_text: [{ text: { content: payload.durationText } }] } : null },
-    { name: "상태", type: "select", value: { select: { name: "분석대기" } } },
-    { name: "입력방식", type: "select", value: payload.entryMethod ? { select: { name: payload.entryMethod } } : null },
   ];
 
   for (const plan of plans) {
@@ -146,6 +177,22 @@ export function filterProperties(
       properties[plan.name] = plan.value;
     } else {
       skipped.push(plan.name);
+    }
+  }
+
+  // 선택형 속성은 select와 status 양쪽을 받아들인다. skipped 순서는 위 목록 뒤를 잇는다.
+  const choicePlans: Array<{ name: string; optionName: string | null }> = [
+    { name: "상태", optionName: "분석대기" },
+    { name: "입력방식", optionName: payload.entryMethod || null },
+  ];
+
+  for (const plan of choicePlans) {
+    if (plan.optionName === null) continue; // 값이 없으면 조용히 건너뜀
+    const resolved = resolveChoice(schema[plan.name], plan.optionName);
+    if ("value" in resolved) {
+      properties[plan.name] = resolved.value;
+    } else {
+      skipped.push(resolved.reason ? `${plan.name}(${resolved.reason})` : plan.name);
     }
   }
 

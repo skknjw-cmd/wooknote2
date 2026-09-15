@@ -238,3 +238,62 @@ describe("filterProperties", () => {
     expect(skipped).toContain("이름(title)");
   });
 });
+
+// ── status 타입 선택형 속성 ──
+// Notion 한글 UI가 기본 제공하는 `상태`는 select가 아니라 status 타입이다.
+// status는 API로 새 옵션을 만들 수 없을 뿐, 기존 옵션명과 일치하면 값 설정은 된다.
+
+const statusSchema = (optionNames: string[]) => ({
+  이름: { type: "title" },
+  상태: { type: "status", status: { options: optionNames.map((name) => ({ name })) } },
+});
+
+describe("filterProperties — status 타입", () => {
+  it("status 옵션에 분석대기가 있으면 status 형태로 채운다", () => {
+    const { properties, skipped } = filterProperties(statusSchema(["분석대기", "분석완료"]), payload);
+    expect(properties["상태"]).toEqual({ status: { name: "분석대기" } });
+    expect(skipped).not.toContain("상태");
+  });
+
+  it("status 옵션에 분석대기가 없으면 건너뛰고 이유를 남긴다", () => {
+    const { properties, skipped } = filterProperties(statusSchema(["시작전", "완료"]), payload);
+    expect(properties["상태"]).toBeUndefined();
+    expect(skipped.find((s) => s.startsWith("상태"))).toBe('상태(status 옵션 "분석대기" 없음)');
+  });
+
+  it("status 속성에 options가 아예 없으면 건너뛴다", () => {
+    const schema = { 이름: { type: "title" }, 상태: { type: "status" } };
+    const { properties, skipped } = filterProperties(schema, payload);
+    expect(properties["상태"]).toBeUndefined();
+    expect(skipped.find((s) => s.startsWith("상태"))).toBe('상태(status 옵션 "분석대기" 없음)');
+  });
+
+  it("select 타입이면 기존대로 select 형태로 채운다 (옵션 검사 없음)", () => {
+    const schema = { 이름: { type: "title" }, 상태: { type: "select" } };
+    const { properties } = filterProperties(schema, payload);
+    expect(properties["상태"]).toEqual({ select: { name: "분석대기" } });
+  });
+
+  it("입력방식도 status 타입이면 같은 규칙을 따른다", () => {
+    const withOption = {
+      이름: { type: "title" },
+      입력방식: { type: "status", status: { options: [{ name: "live" }, { name: "text" }] } },
+    };
+    expect(filterProperties(withOption, payload).properties["입력방식"]).toEqual({ status: { name: "live" } });
+
+    const withoutOption = {
+      이름: { type: "title" },
+      입력방식: { type: "status", status: { options: [{ name: "audio" }] } },
+    };
+    const { properties, skipped } = filterProperties(withoutOption, payload);
+    expect(properties["입력방식"]).toBeUndefined();
+    expect(skipped.find((s) => s.startsWith("입력방식"))).toBe('입력방식(status 옵션 "live" 없음)');
+  });
+
+  it("date·rich_text 속성은 status 규칙의 영향을 받지 않는다", () => {
+    const schema = { 이름: { type: "title" }, 회의일시: { type: "date" }, 참석자: { type: "rich_text" } };
+    const { properties } = filterProperties(schema, payload);
+    expect(properties["회의일시"]).toEqual({ date: { start: "2026-09-15" } });
+    expect(properties["참석자"]).toEqual({ rich_text: [{ text: { content: "김팀장, 이책임" } }] });
+  });
+});
