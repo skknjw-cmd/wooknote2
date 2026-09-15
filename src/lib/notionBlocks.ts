@@ -133,15 +133,6 @@ export function listProperties(schema: NotionPropertySchema): NotionPropertyInfo
   });
 }
 
-type PropertyPlan = {
-  /** 스키마에서 찾을 속성 이름 */
-  name: string;
-  /** 요구 타입 */
-  type: string;
-  /** 채울 값. null이면 값이 없어 건너뜀(skipped에 넣지 않음) */
-  value: unknown | null;
-};
-
 /**
  * 선택형 속성(select 또는 status)에 넣을 값을 정한다.
  *
@@ -188,6 +179,9 @@ export function filterProperties(
 ): { properties: Record<string, unknown>; skipped: string[] } {
   const properties: Record<string, unknown> = {};
   const skipped: string[] = [];
+  // target(속성 이름) → 그 속성을 먼저 차지한 필드 라벨. 같은 속성을 두 필드가
+  // 가리킬 때 나중 필드가 덮어쓰지 않고 이유를 남기게 하려고 기록해 둔다.
+  const claimedBy: Record<string, string> = {};
 
   // title: 타입으로 탐색
   const titleName = Object.keys(schema).find((k) => schema[k].type === "title");
@@ -216,11 +210,17 @@ export function filterProperties(
     const m = fields?.[plan.key];
     if (m && m.property === null) continue; // 일부러 쓰지 않는 필드
     const target = m?.property ?? plan.name;
-    if (schema[target]?.type === plan.type) {
-      properties[target] = plan.value;
-    } else {
+    if (schema[target]?.type !== plan.type) {
       skipped.push(skipLabel(plan.name, m ? target : null, m ? `${plan.type} 아님` : ""));
+      continue;
     }
+    if (target in properties) {
+      // 다른 필드가 이미 같은 속성을 차지함 — 먼저 온 값을 지키고 이유를 남긴다.
+      skipped.push(skipLabel(plan.name, m ? target : null, `${claimedBy[target]}와 같은 속성`));
+      continue;
+    }
+    properties[target] = plan.value;
+    claimedBy[target] = plan.name;
   }
 
   // 선택형 속성 (select 또는 status). skipped 순서는 위 목록 뒤를 잇는다.
@@ -235,9 +235,15 @@ export function filterProperties(
     const optionName = m?.option ?? plan.defaultOption;
     if (!optionName) continue; // 넣을 값이 없으면 조용히 건너뜀
     const target = m?.property ?? plan.name;
+    if (target in properties) {
+      // 다른 필드가 이미 같은 속성을 차지함 — 먼저 온 값을 지키고 이유를 남긴다.
+      skipped.push(skipLabel(plan.name, m ? target : null, `${claimedBy[target]}와 같은 속성`));
+      continue;
+    }
     const resolved = resolveChoice(schema[target], optionName);
     if ("value" in resolved) {
       properties[target] = resolved.value;
+      claimedBy[target] = plan.name;
     } else {
       skipped.push(skipLabel(plan.name, m ? target : null, resolved.reason));
     }

@@ -426,4 +426,42 @@ describe("filterProperties — 매핑", () => {
     const { properties } = filterProperties(schema, payload, fields);
     expect(properties["방식"]).toEqual({ select: { name: "라이브" } });
   });
+
+  it("값 필드 두 개가 같은 속성을 가리키면 먼저 온 쪽이 이기고 나중 것은 skipped에 이유와 함께 남는다", () => {
+    const schema = { 이름: { type: "title" }, 메모: { type: "rich_text" } };
+    const fields: Fields = {
+      attendees: { property: "메모" },
+      durationText: { property: "메모" },
+    };
+    const { properties, skipped } = filterProperties(schema, payload, fields);
+    expect(properties["메모"]).toEqual({ rich_text: [{ text: { content: "김팀장, 이책임" } }] });
+    expect(skipped).toContain("소요시간(→메모: 참석자와 같은 속성)");
+  });
+
+  it("값 필드와 선택형 필드가 같은 속성을 가리켜도 같은 규칙을 적용한다", () => {
+    const schema = { 이름: { type: "title" }, 메모: { type: "rich_text" } };
+    const fields: Fields = {
+      durationText: { property: "메모" },
+      status: { property: "메모", option: "아무값" },
+    };
+    const { properties, skipped } = filterProperties(schema, payload, fields);
+    expect(properties["메모"]).toEqual({ rich_text: [{ text: { content: "1:23:45" } }] });
+    expect(skipped).toContain("상태(→메모: 소요시간와 같은 속성)");
+  });
+
+  it("서로 다른 속성을 가리키면 충돌 없이 둘 다 채워진다", () => {
+    const schema = {
+      이름: { type: "title" },
+      참석자용: { type: "rich_text" },
+      소요시간용: { type: "rich_text" },
+    };
+    const fields: Fields = {
+      attendees: { property: "참석자용" },
+      durationText: { property: "소요시간용" },
+    };
+    const { properties, skipped } = filterProperties(schema, payload, fields);
+    expect(properties["참석자용"]).toEqual({ rich_text: [{ text: { content: "김팀장, 이책임" } }] });
+    expect(properties["소요시간용"]).toEqual({ rich_text: [{ text: { content: "1:23:45" } }] });
+    expect(skipped.some((s) => s.includes("같은 속성"))).toBe(false);
+  });
 });
