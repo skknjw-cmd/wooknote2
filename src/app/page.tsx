@@ -254,8 +254,12 @@ export default function Home() {
   }
 
   /**
-   * 특정 노트의 발화를 갱신한다. 그 노트가 지금 녹음 중이면 세션 ref도 함께 맞춘다.
+   * 특정 노트의 발화를 갱신하고 저장한다. 그 노트가 지금 녹음 중이면 세션 ref도 함께 맞춘다.
    * ref를 맞추지 않으면 다음 청크가 사용자의 편집을 덮어쓴다.
+   *
+   * 저장까지 하는 이유: 사이드바에서 연 노트의 발화를 고친 뒤 다른 노트로 넘어가면
+   * state만 바꾼 편집은 그대로 사라진다. (청크 조립 경로는 여기를 쓰지 않는다 —
+   * 15초마다 IndexedDB에 쓰는 것은 낭비고, 확정 저장은 finalizeNote가 한다.)
    */
   function applySegments(noteId: string, segments: TurnSegment[]) {
     if (stt.recordingNoteId === noteId) {
@@ -266,6 +270,12 @@ export default function Home() {
     }
     setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, segments } : n)));
     setCurrentNote((cur) => (cur && cur.id === noteId ? { ...cur, segments } : cur));
+
+    // 반쪽짜리 객체를 저장하지 않도록, 저장할 노트는 최신 노트 객체 위에 segments만 얹어 만든다.
+    const base =
+      notes.find((n) => n.id === noteId) ??
+      (currentNote && currentNote.id === noteId ? currentNote : undefined);
+    if (base) dbSave({ ...base, segments }).catch(console.error);
   }
 
   /** 청크 하나가 도착했을 때 녹음 중인 노트에 조립해 넣는다. */
@@ -510,15 +520,24 @@ export default function Home() {
       // 저장 대상은 화면에 떠 있는 노트가 아니라 녹음하던 노트다. 사용자가 녹음 중
       // 다른 노트를 열어 보고 있었다면 currentNote는 남의 노트이고, 그걸 확정 저장하면
       // IndexedDB·.md·Notion까지 엉뚱한 내용이 나간다.
-      const target = recordingNoteRef.current;
-      if (!target) return;
+      const rec = recordingNoteRef.current;
+      if (!rec) return;
+      // 녹음하던 노트의 최신본을 목록에서 가져온다. 녹음 중 제목·메모·To-Do를 고쳤다면
+      // 그 편집이 여기 들어 있다. 녹음이 소유한 필드만 그 위에 덮어쓴다.
+      const latest = notes.find((n) => n.id === rec.id) ?? rec;
       // AI 분석은 하지 않는다. 사용자가 "다시 정리"를 누를 때만 실행된다.
       await finalizeNote({
-        ...target,
+        ...latest,
         segments: recordingSegmentsRef.current,
         participants: recordingParticipantsRef.current,
         audioDuration: sessionBaseMs.current + elapsedMs,
       });
+
+      // 세션 ref는 녹음 1회 동안만 유효하다. 비워 두지 않으면 두 번째 중지가
+      // 이미 끝난 녹음을 대상으로 다시 확정 저장한다.
+      recordingNoteRef.current = null;
+      recordingSegmentsRef.current = [];
+      recordingParticipantsRef.current = [];
     } else {
       const note = currentNote;
       if (!note) return;
