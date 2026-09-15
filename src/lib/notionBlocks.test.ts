@@ -337,3 +337,93 @@ describe("listProperties", () => {
     expect(out).toEqual([{ name: "진행", type: "select", options: [] }]);
   });
 });
+
+import type { NotionFieldKey, NotionFieldMapping } from "@/types/meeting";
+
+type Fields = Partial<Record<NotionFieldKey, NotionFieldMapping>>;
+
+describe("filterProperties — 매핑", () => {
+  it("fields를 넘기지 않으면 기존 동작 그대로", () => {
+    const without = filterProperties(fullSchema, payload);
+    const withNull = filterProperties(fullSchema, payload, null);
+    expect(withNull).toEqual(without);
+  });
+
+  it("키가 없는 필드는 하드코딩 이름으로 찾는다", () => {
+    const fields: Fields = { status: { property: null } };
+    const { properties } = filterProperties(fullSchema, payload, fields);
+    expect(properties["회의일시"]).toEqual({ date: { start: "2026-09-15" } });
+  });
+
+  it("property가 null이면 채우지 않고 skipped에도 넣지 않는다", () => {
+    const fields: Fields = { durationText: { property: null } };
+    const { properties, skipped } = filterProperties(fullSchema, payload, fields);
+    expect(properties["소요시간"]).toBeUndefined();
+    expect(skipped.some((s) => s.startsWith("소요시간"))).toBe(false);
+  });
+
+  it("매핑된 이름의 속성에 넣는다", () => {
+    const schema = { 이름: { type: "title" }, 회의일자: { type: "date" } };
+    const fields: Fields = { meetingDate: { property: "회의일자" } };
+    const { properties } = filterProperties(schema, payload, fields);
+    expect(properties["회의일자"]).toEqual({ date: { start: "2026-09-15" } });
+    expect(properties["회의일시"]).toBeUndefined();
+  });
+
+  it("매핑 대상 속성이 스키마에 없으면 이유와 함께 skipped", () => {
+    const schema = { 이름: { type: "title" } };
+    const fields: Fields = { meetingDate: { property: "없는속성" } };
+    const { skipped } = filterProperties(schema, payload, fields);
+    expect(skipped).toContain("회의일시(→없는속성: date 아님)");
+  });
+
+  it("매핑 대상의 타입이 안 맞으면 이유와 함께 skipped", () => {
+    const schema = { 이름: { type: "title" }, 메모: { type: "rich_text" } };
+    const fields: Fields = { meetingDate: { property: "메모" } };
+    const { properties, skipped } = filterProperties(schema, payload, fields);
+    expect(properties["메모"]).toBeUndefined();
+    expect(skipped).toContain("회의일시(→메모: date 아님)");
+  });
+
+  it("선택형에 옵션을 지정하면 그 옵션을 넣는다 (select)", () => {
+    const schema = { 이름: { type: "title" }, 진행: { type: "select" } };
+    const fields: Fields = { status: { property: "진행", option: "대기" } };
+    const { properties } = filterProperties(schema, payload, fields);
+    expect(properties["진행"]).toEqual({ select: { name: "대기" } });
+  });
+
+  it("선택형에 옵션을 지정하면 그 옵션을 넣는다 (status, 옵션 존재)", () => {
+    const schema = {
+      이름: { type: "title" },
+      진행: { type: "status", status: { options: [{ name: "대기" }, { name: "완료" }] } },
+    };
+    const fields: Fields = { status: { property: "진행", option: "대기" } };
+    const { properties } = filterProperties(schema, payload, fields);
+    expect(properties["진행"]).toEqual({ status: { name: "대기" } });
+  });
+
+  it("status 옵션이 없으면 매핑해도 건너뛰고 이유를 남긴다", () => {
+    const schema = {
+      이름: { type: "title" },
+      진행: { type: "status", status: { options: [{ name: "완료" }] } },
+    };
+    const fields: Fields = { status: { property: "진행", option: "대기" } };
+    const { properties, skipped } = filterProperties(schema, payload, fields);
+    expect(properties["진행"]).toBeUndefined();
+    expect(skipped).toContain('상태(→진행: status 옵션 "대기" 없음)');
+  });
+
+  it("옵션을 지정하지 않으면 기본값으로 떨어진다", () => {
+    const schema = { 이름: { type: "title" }, 진행: { type: "select" } };
+    const fields: Fields = { status: { property: "진행" } };
+    const { properties } = filterProperties(schema, payload, fields);
+    expect(properties["진행"]).toEqual({ select: { name: "분석대기" } });
+  });
+
+  it("입력방식도 매핑된다", () => {
+    const schema = { 이름: { type: "title" }, 방식: { type: "select" } };
+    const fields: Fields = { entryMethod: { property: "방식", option: "라이브" } };
+    const { properties } = filterProperties(schema, payload, fields);
+    expect(properties["방식"]).toEqual({ select: { name: "라이브" } });
+  });
+});

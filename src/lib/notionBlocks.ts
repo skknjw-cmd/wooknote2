@@ -1,4 +1,4 @@
-import type { NotionMeetingPayload } from "@/types/meeting";
+import type { NotionMeetingPayload, NotionFieldKey, NotionFieldMapping } from "@/types/meeting";
 
 /** Notion rich_text 1개의 최대 길이. */
 export const NOTION_TEXT_LIMIT = 2000;
@@ -168,13 +168,23 @@ function resolveChoice(
   return { reason: "" };
 }
 
+/** skipped에 남길 문자열. 매핑된 경우 어느 속성을 노렸는지 함께 적는다. */
+function skipLabel(fieldLabel: string, target: string | null, reason: string): string {
+  if (target === null) return reason ? `${fieldLabel}(${reason})` : fieldLabel;
+  return `${fieldLabel}(→${target}${reason ? `: ${reason}` : ""})`;
+}
+
 /**
  * 데이터 소스 스키마에 실제로 존재하고 타입까지 맞는 속성만 남긴다.
  * title은 이름이 DB마다 다르므로(한글 "이름", 영문 "Name") 타입으로 찾는다.
+ *
+ * fields를 넘기면 앱 필드를 사용자가 고른 속성·옵션에 넣는다. 넘기지 않으면
+ * 하드코딩 이름으로 추정하는 기존 동작을 그대로 쓴다.
  */
 export function filterProperties(
   schema: NotionPropertySchema,
   payload: NotionMeetingPayload,
+  fields?: Partial<Record<NotionFieldKey, NotionFieldMapping>> | null,
 ): { properties: Record<string, unknown>; skipped: string[] } {
   const properties: Record<string, unknown> = {};
   const skipped: string[] = [];
@@ -188,34 +198,48 @@ export function filterProperties(
   }
 
   const attendeesText = payload.attendees.join(", ");
-  const plans: PropertyPlan[] = [
-    { name: "회의일시", type: "date", value: payload.meetingDate ? { date: { start: payload.meetingDate } } : null },
-    { name: "참석자", type: "rich_text", value: attendeesText ? { rich_text: [{ text: { content: attendeesText } }] } : null },
-    { name: "소요시간", type: "rich_text", value: payload.durationText ? { rich_text: [{ text: { content: payload.durationText } }] } : null },
+
+  // 값 속성 (date / rich_text)
+  const valuePlans: Array<{
+    key: NotionFieldKey;
+    name: string;
+    type: string;
+    value: unknown | null;
+  }> = [
+    { key: "meetingDate", name: "회의일시", type: "date", value: payload.meetingDate ? { date: { start: payload.meetingDate } } : null },
+    { key: "attendees", name: "참석자", type: "rich_text", value: attendeesText ? { rich_text: [{ text: { content: attendeesText } }] } : null },
+    { key: "durationText", name: "소요시간", type: "rich_text", value: payload.durationText ? { rich_text: [{ text: { content: payload.durationText } }] } : null },
   ];
 
-  for (const plan of plans) {
+  for (const plan of valuePlans) {
     if (plan.value === null) continue; // 값이 없으면 조용히 건너뜀
-    if (schema[plan.name]?.type === plan.type) {
-      properties[plan.name] = plan.value;
+    const m = fields?.[plan.key];
+    if (m && m.property === null) continue; // 일부러 쓰지 않는 필드
+    const target = m?.property ?? plan.name;
+    if (schema[target]?.type === plan.type) {
+      properties[target] = plan.value;
     } else {
-      skipped.push(plan.name);
+      skipped.push(skipLabel(plan.name, m ? target : null, m ? `${plan.type} 아님` : ""));
     }
   }
 
-  // 선택형 속성은 select와 status 양쪽을 받아들인다. skipped 순서는 위 목록 뒤를 잇는다.
-  const choicePlans: Array<{ name: string; optionName: string | null }> = [
-    { name: "상태", optionName: "분석대기" },
-    { name: "입력방식", optionName: payload.entryMethod || null },
+  // 선택형 속성 (select 또는 status). skipped 순서는 위 목록 뒤를 잇는다.
+  const choicePlans: Array<{ key: NotionFieldKey; name: string; defaultOption: string | null }> = [
+    { key: "status", name: "상태", defaultOption: "분석대기" },
+    { key: "entryMethod", name: "입력방식", defaultOption: payload.entryMethod || null },
   ];
 
   for (const plan of choicePlans) {
-    if (plan.optionName === null) continue; // 값이 없으면 조용히 건너뜀
-    const resolved = resolveChoice(schema[plan.name], plan.optionName);
+    const m = fields?.[plan.key];
+    if (m && m.property === null) continue; // 일부러 쓰지 않는 필드
+    const optionName = m?.option ?? plan.defaultOption;
+    if (!optionName) continue; // 넣을 값이 없으면 조용히 건너뜀
+    const target = m?.property ?? plan.name;
+    const resolved = resolveChoice(schema[target], optionName);
     if ("value" in resolved) {
-      properties[plan.name] = resolved.value;
+      properties[target] = resolved.value;
     } else {
-      skipped.push(resolved.reason ? `${plan.name}(${resolved.reason})` : plan.name);
+      skipped.push(skipLabel(plan.name, m ? target : null, resolved.reason));
     }
   }
 
