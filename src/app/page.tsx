@@ -32,6 +32,7 @@ import { chunkAudioFile } from "@/lib/audioChunk";
 import { useOfflineSTT } from "@/hooks/useOfflineSTT";
 import { saveNote as dbSave, getNotes as dbGetNotes } from "@/lib/db";
 import { saveNoteToFolder, pickSaveFolder, getSaveFolderName } from "@/lib/folderStorage";
+import { pushToNotion } from "@/lib/notionSave";
 import type {
   NoteRecord,
   Participant,
@@ -39,6 +40,7 @@ import type {
   AnalysisResult,
   TurnSegment,
   DiscussionItem,
+  NotionSaveState,
 } from "@/types/meeting";
 
 type AppScreen = "mode-select" | "roster" | "live" | "text" | "audio" | "video";
@@ -209,6 +211,8 @@ export default function Home() {
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioProgress, setAudioProgress] = useState<{ current: number; total: number } | undefined>();
   const [analyzing, setAnalyzing] = useState(false);
+  const [notionStatus, setNotionStatus] = useState<NotionSaveState>({ kind: "idle" });
+  const lastSavedNote = useRef<NoteRecord | null>(null);
 
   useEffect(() => {
     dbGetNotes().then((loaded) => { if (loaded.length) setNotes(loaded); });
@@ -241,6 +245,24 @@ export default function Home() {
     updateNoteState(updated);
     dbSave(updated).catch(console.error);
     saveNoteToFolder(updated).catch(console.error);
+  }
+
+  /**
+   * 입력이 끝난 노트를 확정 저장한다. 로컬(IndexedDB + 폴더)을 먼저 저장하고
+   * 그다음 Notion으로 보낸다. Notion이 실패해도 회의 내용은 로컬에 남는다.
+   */
+  async function finalizeNote(note: NoteRecord) {
+    saveNote(note);
+    lastSavedNote.current = note;
+    setNotionStatus({ kind: "saving" });
+    setNotionStatus(await pushToNotion(note));
+  }
+
+  async function handleRetryNotion() {
+    const note = lastSavedNote.current;
+    if (!note) return;
+    setNotionStatus({ kind: "saving" });
+    setNotionStatus(await pushToNotion(note));
   }
 
   function handleSave() {
@@ -347,10 +369,18 @@ export default function Home() {
 
   async function handleToggleRecording() {
     if (stt.isRecording) {
+      const elapsedMs = stt.elapsedMs;
       await stt.stopRecording();
       setAppMode("review");
       if (currentNote) {
-        await analyzeFromTurns(currentNote, stt.getLatestTurns(), stt.participants);
+        // AI 분석은 하지 않는다. 사용자가 "다시 정리"를 누를 때만 실행된다.
+        const turns = stt.getLatestTurns();
+        await finalizeNote({
+          ...currentNote,
+          participants: stt.participants,
+          segments: turns,
+          audioDuration: elapsedMs,
+        });
       }
     } else {
       stt.startRecording().catch(console.error);
@@ -378,27 +408,17 @@ export default function Home() {
   async function handleTextSubmit(data: TextSubmitData) {
     const note = currentNote ?? emptyNote("text");
     if (!currentNote) setCurrentNote(note);
-    if (!hasApiKey()) {
-      alert("Gemini API 키가 설정되지 않았습니다.\n우상단 설정에서 API 키를 입력해주세요.");
-      return;
-    }
-    setAnalyzing(true);
-    try {
-      const result = await callAnalyze(data.text, {
-        title: data.title,
-        date: data.date || new Date().toLocaleDateString("ko-KR"),
-        attendees: "미정",
-      });
-      const textTurns = parseTextToTurns(data.text);
-      saveNote(applyAnalysis({ ...note, segments: textTurns, title: data.title || note.title }, result));
-      setAppMode("review");
-      setScreen("live");
-    } catch (err) {
-      console.error("분석 실패:", err);
-      alert("AI 분석 중 오류가 발생했습니다.\n" + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setAnalyzing(false);
-    }
+
+    // AI 분석 없이 바로 저장한다. 분석은 "다시 정리" 버튼에서만 실행된다.
+    const textTurns = parseTextToTurns(data.text);
+    await finalizeNote({
+      ...note,
+      segments: textTurns,
+      title: data.title || note.title,
+      meetingDate: data.date || note.meetingDate,
+    });
+    setAppMode("review");
+    setScreen("live");
   }
 
   // ── Audio file upload mode ──────────────────────────────────────────────────
@@ -505,14 +525,13 @@ export default function Home() {
         }
       }
 
-      const transcript = texts.join("\n");
-      const result = await callAnalyze(transcript, {
+      // AI 분석 없이 바로 저장한다. 분석은 "다시 정리" 버튼에서만 실행된다.
+      await finalizeNote({
+        ...note,
+        segments: allTurns,
         title: file.name.replace(/\.[^.]+$/, ""),
-        date: new Date().toLocaleDateString("ko-KR"),
-        attendees: "미정",
+        audioDuration: audioDurationMs,
       });
-      const updated = applyAnalysis({ ...note, segments: allTurns, title: file.name.replace(/\.[^.]+$/, ""), audioDuration: audioDurationMs }, result);
-      saveNote(updated);
       setAppMode("review");
       setScreen("live");
     } catch (err) {
