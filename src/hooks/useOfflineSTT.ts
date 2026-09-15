@@ -4,8 +4,18 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { TurnSegment, Participant } from "@/types/meeting";
 import { getSttProvider, apiKeyHeader, openAiKeyHeader, clovaKeyHeaders } from "@/lib/apiKey";
 import { encodeWav } from "@/lib/audioChunk";
+import type { RawSegment } from "@/lib/turnAssembly";
 
 type ModelStatus = "idle" | "loading" | "ready";
+
+/** 청크 하나의 STT 결과를 가공 없이 내보낸다. */
+export type ChunkHandler = (chunk: { segments: RawSegment[]; chunkStartMs: number }) => void;
+
+export type RecordingHandlers = {
+  onChunk: ChunkHandler;
+  /** STT 프롬프트의 화자 힌트에 쓸 현재 참석자. 훅은 이 값을 보관하지 않는다. */
+  getParticipants: () => Participant[];
+};
 
 const CHUNK_MS = 15 * 1000;
 
@@ -17,7 +27,8 @@ interface STTState {
   turns: TurnSegment[];
   participants: Participant[];
   sttError: string | null;
-  startRecording: () => Promise<void>;
+  recordingNoteId: string | null;
+  startRecording: (noteId?: string, handlers?: RecordingHandlers) => Promise<void>;
   stopRecording: () => Promise<void>;
   getLatestTurns: () => TurnSegment[];
   updateSpeakerName: (sp: number, name: string) => void;
@@ -50,6 +61,9 @@ export function useOfflineSTT(): STTState {
   const segIdRef = useRef(0);
   const prevContextRef = useRef<{ sp: number; text: string }[]>([]);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const [recordingNoteId, setRecordingNoteId] = useState<string | null>(null);
+  const onChunkRef = useRef<ChunkHandler | null>(null);
+  const getParticipantsRef = useRef<(() => Participant[]) | null>(null);
 
   function formatTime(ms: number): string {
     const s = Math.floor(ms / 1000);
@@ -93,9 +107,10 @@ export function useOfflineSTT(): STTState {
 
       const form = new FormData();
       form.append("media", sendBlob, "chunk.wav");
-      if (participantsRef.current.length > 0) {
-        form.append("attendeeCount", String(participantsRef.current.length));
-        const names = participantsRef.current
+      const roster = getParticipantsRef.current?.() ?? participantsRef.current;
+      if (roster.length > 0) {
+        form.append("attendeeCount", String(roster.length));
+        const names = roster
           .filter((p) => p.name)
           .map((p) => `화자 ${p.sp}: ${p.name}`)
           .join(", ");
@@ -148,6 +163,16 @@ export function useOfflineSTT(): STTState {
         return;
       }
       setSttError(null);
+
+      // 새 경로: 가공 없이 내보낸다. 조립은 호출자가 한다.
+      if (onChunkRef.current) {
+        onChunkRef.current({ segments, chunkStartMs });
+        // 다음 청크의 화자 연속성 힌트. 조립된 발화 대신 가공 전 조각의 마지막 3개를 쓴다.
+        prevContextRef.current = segments
+          .slice(-3)
+          .map((s) => ({ sp: parseInt(s.clovaLabel, 10) || 1, text: s.text }));
+        return;
+      }
 
       const newContext: { sp: number; text: string }[] = [];
       setTurns((prev) => {
@@ -260,7 +285,10 @@ export function useOfflineSTT(): STTState {
   }, []);
 
   // ── 녹음 시작 ───────────────────────────────────────────────
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (noteId?: string, handlers?: RecordingHandlers) => {
+    onChunkRef.current = handlers?.onChunk ?? null;
+    getParticipantsRef.current = handlers?.getParticipants ?? null;
+    setRecordingNoteId(noteId ?? null);
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
     isRecordingRef.current = true;
@@ -268,6 +296,8 @@ export function useOfflineSTT(): STTState {
     elapsedMsRef.current = 0;
 
     speakerLetterMapRef.current = new Map();
+    // 새 녹음의 첫 청크가 이전 회의의 문맥을 프롬프트로 받지 않게 한다.
+    prevContextRef.current = [];
     startChunk(stream);
     await acquireWakeLock();
 
@@ -369,6 +399,7 @@ export function useOfflineSTT(): STTState {
     modelStatus: "ready",
     modelProgress: { whisper: 1, speaker: 1 },
     isRecording,
+    recordingNoteId,
     elapsedMs,
     turns,
     participants,
