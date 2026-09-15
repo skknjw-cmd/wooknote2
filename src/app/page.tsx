@@ -291,6 +291,9 @@ export default function Home() {
       setCurrentNote(note);
       setAppMode("review");
       setScreen("live");
+      // 노트를 바꾸면 이전 노트의 Notion 저장 상태가 남아 오해를 부르므로 초기화한다.
+      setNotionStatus({ kind: "idle" });
+      lastSavedNote.current = null;
     }
   }
 
