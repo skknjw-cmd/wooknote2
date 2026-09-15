@@ -39,15 +39,18 @@ interface AppShellProps {
   onPickFolder?: () => void;
   notionStatus?: NotionSaveState;
   onRetryNotion?: () => void;
-  /** 이번 세션에서 녹음한 노트일 때만 true. false면 "이어 녹음" 버튼을 숨긴다. */
-  canResumeRecording?: boolean;
+  /** 지금 녹음 중인 노트. 보고 있는 노트와 다르면 상단에 안내를 띄운다. */
+  recordingNoteId?: string | null;
+  onGoToRecordingNote?: () => void;
 }
 
 /** 저장 상태를 배너 문구와 아이콘으로 옮긴다. */
 function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNode } {
   switch (status.kind) {
     case "saving":
-      return { ico: "⏳", text: <span><b>저장 중…</b> Notion에 기록하고 있습니다.</span> };
+      // 중지 직후의 마지막 음성 처리와 그 뒤의 저장을 한 문구로 덮는다. 두 단계 모두
+      // "아직 저장되지 않았다"는 같은 사실을 말해야 하므로 Notion만 집어 말하지 않는다.
+      return { ico: "⏳", text: <span><b>저장 중…</b> 마지막 음성을 처리하고 저장하는 중입니다.</span> };
     case "saved":
       return {
         ico: "✅",
@@ -104,12 +107,16 @@ export default function AppShell({
   onPickFolder,
   notionStatus = { kind: "idle" },
   onRetryNotion,
-  canResumeRecording = false,
+  recordingNoteId = null,
+  onGoToRecordingNote,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
 
   const gridCols = collapsed ? "48px 1fr" : "240px 1fr";
+
+  // 지금 보고 있는 노트가 실제로 녹음 중인가. 다른 노트를 녹음 중이면 이 패널은 녹음 상태가 아니다.
+  const isRecordingThisNote = isRecording && (!recordingNoteId || currentNote?.id === recordingNoteId);
 
   return (
     <div
@@ -139,11 +146,24 @@ export default function AppShell({
           key={currentNote?.id}
         />
         <div className="actions">
-          {mode === "live" && isRecording && (
-            <div className="live-pill">
-              <span className="dot" />
-              REC
-            </div>
+          {isRecording && (
+            recordingNoteId && currentNote && recordingNoteId !== currentNote.id ? (
+              <button
+                type="button"
+                className="live-pill"
+                onClick={onGoToRecordingNote}
+                title="녹음 중인 노트로 이동"
+                style={{ border: "none", cursor: "pointer" }}
+              >
+                <span className="dot" />
+                다른 노트 녹음 중 · 돌아가기
+              </button>
+            ) : (
+              <div className="live-pill">
+                <span className="dot" />
+                REC
+              </div>
+            )
           )}
           {mode === "review" && (
             <button className="btn" onClick={onRegen}>
@@ -198,9 +218,7 @@ export default function AppShell({
               <span className="ico">{ico}</span>
               {text}
               <div className="actions">
-                {canResumeRecording && (
-                  <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
-                )}
+                <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
                 {canRetry && (
                   <button className="btn" onClick={onRetryNotion}>다시 시도</button>
                 )}
@@ -227,7 +245,7 @@ export default function AppShell({
               keywords={keywords}
               participants={participants}
               mode={mode}
-              isRecording={isRecording}
+              isRecording={isRecordingThisNote}
               elapsedMs={elapsedMs}
               sttError={sttError}
               onToggleRecording={onToggleRecording}
