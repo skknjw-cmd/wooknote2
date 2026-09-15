@@ -224,6 +224,12 @@ export default function Home() {
   const sessionSpeakerBase = useRef(1);
   const sessionBaseMs = useRef(0);
   const sessionFirstChunk = useRef(true);
+  // 중지 처리 중인가. stopRecording()은 isRecording을 곧바로 false로 만들지만,
+  // 반환하는 프라미스는 마지막 청크의 STT 왕복이 끝날 때까지(수 초) 기다린다.
+  // 그동안 토글을 다시 누르면 새 녹음이 시작돼 세션 ref를 갈아엎고, 먼저 진입한
+  // 중지가 두 번째 녹음의 발화를 첫 번째 노트에 확정 저장한 뒤 ref를 비워
+  // 두 번째 회의가 통째로 사라진다. 그 재진입을 막는다.
+  const stoppingRef = useRef(false);
 
   useEffect(() => {
     dbGetNotes().then((loaded) => { if (loaded.length) setNotes(loaded); });
@@ -513,32 +519,44 @@ export default function Home() {
 
   async function handleToggleRecording() {
     if (stt.isRecording) {
+      // 이미 중지 처리 중이면 아무것도 하지 않는다.
+      if (stoppingRef.current) return;
+      stoppingRef.current = true;
       const elapsedMs = stt.elapsedMs;
-      await stt.stopRecording();
+      // 라이브 모드는 await 전에 벗어난다. 마지막 청크를 기다리는 수 초 동안
+      // 화면이 계속 "녹음 중"처럼 보이면 사용자가 다시 누르게 된다.
       setAppMode("review");
+      try {
+        await stt.stopRecording();
 
-      // 저장 대상은 화면에 떠 있는 노트가 아니라 녹음하던 노트다. 사용자가 녹음 중
-      // 다른 노트를 열어 보고 있었다면 currentNote는 남의 노트이고, 그걸 확정 저장하면
-      // IndexedDB·.md·Notion까지 엉뚱한 내용이 나간다.
-      const rec = recordingNoteRef.current;
-      if (!rec) return;
-      // 녹음하던 노트의 최신본을 목록에서 가져온다. 녹음 중 제목·메모·To-Do를 고쳤다면
-      // 그 편집이 여기 들어 있다. 녹음이 소유한 필드만 그 위에 덮어쓴다.
-      const latest = notes.find((n) => n.id === rec.id) ?? rec;
-      // AI 분석은 하지 않는다. 사용자가 "다시 정리"를 누를 때만 실행된다.
-      await finalizeNote({
-        ...latest,
-        segments: recordingSegmentsRef.current,
-        participants: recordingParticipantsRef.current,
-        audioDuration: sessionBaseMs.current + elapsedMs,
-      });
+        // 저장 대상은 화면에 떠 있는 노트가 아니라 녹음하던 노트다. 사용자가 녹음 중
+        // 다른 노트를 열어 보고 있었다면 currentNote는 남의 노트이고, 그걸 확정 저장하면
+        // IndexedDB·.md·Notion까지 엉뚱한 내용이 나간다.
+        const rec = recordingNoteRef.current;
+        if (!rec) return;
+        // 녹음하던 노트의 최신본을 목록에서 가져온다. 녹음 중 제목·메모·To-Do를 고쳤다면
+        // 그 편집이 여기 들어 있다. 녹음이 소유한 필드만 그 위에 덮어쓴다.
+        const latest = notes.find((n) => n.id === rec.id) ?? rec;
+        // AI 분석은 하지 않는다. 사용자가 "다시 정리"를 누를 때만 실행된다.
+        await finalizeNote({
+          ...latest,
+          segments: recordingSegmentsRef.current,
+          participants: recordingParticipantsRef.current,
+          audioDuration: sessionBaseMs.current + elapsedMs,
+        });
 
-      // 세션 ref는 녹음 1회 동안만 유효하다. 비워 두지 않으면 두 번째 중지가
-      // 이미 끝난 녹음을 대상으로 다시 확정 저장한다.
-      recordingNoteRef.current = null;
-      recordingSegmentsRef.current = [];
-      recordingParticipantsRef.current = [];
+        // 세션 ref는 녹음 1회 동안만 유효하다. 비워 두지 않으면 두 번째 중지가
+        // 이미 끝난 녹음을 대상으로 다시 확정 저장한다.
+        recordingNoteRef.current = null;
+        recordingSegmentsRef.current = [];
+        recordingParticipantsRef.current = [];
+      } finally {
+        // 중간에 무엇이 실패해도 가드가 걸린 채로 남지 않게 한다.
+        stoppingRef.current = false;
+      }
     } else {
+      // 중지가 끝나기 전에 새 녹음을 시작하면 세션 ref를 갈아엎어 중지 중인 녹음을 잃는다.
+      if (stoppingRef.current) return;
       const note = currentNote;
       if (!note) return;
       beginRecording(note).catch(console.error);
