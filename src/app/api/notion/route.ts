@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     const error =
       stage === "auth"
         ? "Notion 토큰이 유효하지 않거나 통합이 데이터베이스에 초대되지 않았습니다."
-        : `데이터베이스 ID를 확인하세요. (${errorMessage(err)})`;
+        : `데이터베이스를 찾을 수 없습니다. 데이터베이스 ID가 맞는지, 그리고 Notion에서 통합(Integration)을 이 데이터베이스에 초대했는지 확인하세요. (${errorMessage(err)})`;
     return NextResponse.json<NotionSaveResponse>({ ok: false, stage, error }, { status });
   }
 
