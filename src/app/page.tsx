@@ -410,13 +410,20 @@ export default function Home() {
     if (!currentNote) setCurrentNote(note);
 
     // AI 분석 없이 바로 저장한다. 분석은 "다시 정리" 버튼에서만 실행된다.
+    // 여기서 analyzing은 AI 호출이 아니라 finalizeNote의 Notion 저장 진행 상태를 나타낸다
+    // (버튼 스피너 표시 + 중복 클릭으로 인한 Notion 페이지 중복 생성 방지).
     const textTurns = parseTextToTurns(data.text);
-    await finalizeNote({
-      ...note,
-      segments: textTurns,
-      title: data.title || note.title,
-      meetingDate: data.date || note.meetingDate,
-    });
+    setAnalyzing(true);
+    try {
+      await finalizeNote({
+        ...note,
+        segments: textTurns,
+        title: data.title || note.title,
+        meetingDate: data.date || note.meetingDate,
+      });
+    } finally {
+      setAnalyzing(false);
+    }
     setAppMode("review");
     setScreen("live");
   }
@@ -437,7 +444,6 @@ export default function Home() {
         throw new Error("Clova Speech API 설정이 불완전합니다. 설정에서 Invoke URL과 Secret Key를 확인해주세요.");
       }
 
-      const texts: string[] = [];
       const allTurns: TurnSegment[] = [];
       let turnId = 0;
       let audioDurationMs = 0;
@@ -464,8 +470,6 @@ export default function Home() {
           }
 
           const sttJson = await res.json();
-          const chunkText = sttJson.text ?? "";
-          if (chunkText) texts.push(chunkText);
 
           const segs: { clovaLabel: string; text: string; start?: number }[] = sttJson.segments ?? [];
           const chunkOffsetSecs = i * 120; // 120초 단위 누적 오프셋
@@ -506,7 +510,6 @@ export default function Home() {
           const sttJson = await sttRes.json();
           const chunkText: string = sttJson.text ?? "";
           console.log(`[audio] 청크 ${i + 1}/${chunks.length}:`, chunkText.slice(0, 80));
-          if (chunkText) texts.push(chunkText);
 
           // 세그먼트를 TurnSegment로 수집 (트랜스크립트 패널 표시용)
           const segs: { clovaLabel: string; text: string }[] = sttJson.segments ?? [];
