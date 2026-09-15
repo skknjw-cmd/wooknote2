@@ -643,6 +643,8 @@ export default function Home() {
         analyzing={analyzing}
         folderName={folderName}
         onPickFolder={handlePickFolder}
+        notionStatus={notionStatus}
+        onRetryNotion={handleRetryNotion}
       />
       {showExport && (
         <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />

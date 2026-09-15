@@ -5,7 +5,7 @@ import NoteList from "@/components/Sidebar/NoteList";
 import LiveTranscript from "@/components/Recording/LiveTranscript";
 import NoteDocument from "@/components/NoteDoc/NoteDocument";
 import ModelLoadingOverlay from "@/components/Layout/ModelLoadingOverlay";
-import type { NoteRecord, Participant, TurnSegment } from "@/types/meeting";
+import type { NoteRecord, Participant, TurnSegment, NotionSaveState } from "@/types/meeting";
 
 interface AppShellProps {
   modelStatus: "idle" | "loading" | "ready";
@@ -37,6 +37,34 @@ interface AppShellProps {
   analyzing?: boolean;
   folderName?: string | null;
   onPickFolder?: () => void;
+  notionStatus?: NotionSaveState;
+  onRetryNotion?: () => void;
+}
+
+/** 저장 상태를 배너 문구와 아이콘으로 옮긴다. */
+function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNode } {
+  switch (status.kind) {
+    case "saving":
+      return { ico: "⏳", text: <span><b>저장 중…</b> Notion에 기록하고 있습니다.</span> };
+    case "saved":
+      return {
+        ico: "✅",
+        text: status.skippedProperties.length > 0
+          ? <span><b>저장 완료</b> · Notion에 기록됨 (건너뛴 속성: {status.skippedProperties.join(", ")})</span>
+          : <span><b>저장 완료</b> · Notion에 기록됨</span>,
+      };
+    case "partial":
+      return {
+        ico: "⚠️",
+        text: <span><b>일부만 저장됨</b> ({status.savedBlocks}/{status.totalBlocks} 블록) · 다시 시도하면 새 페이지가 만들어집니다.</span>,
+      };
+    case "unconfigured":
+      return { ico: "💾", text: <span><b>로컬에 저장됨</b> · Notion 미설정</span> };
+    case "failed":
+      return { ico: "❌", text: <span><b>Notion 저장 실패</b> · 로컬에는 저장됨 — {status.message}</span> };
+    default:
+      return { ico: "⏺", text: <span><b>녹음이 종료되었습니다.</b></span> };
+  }
 }
 
 export default function AppShell({
@@ -68,6 +96,8 @@ export default function AppShell({
   analyzing = false,
   folderName,
   onPickFolder,
+  notionStatus = { kind: "idle" },
+  onRetryNotion,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
@@ -153,17 +183,27 @@ export default function AppShell({
 
       {/* Main area: transcript + note doc */}
       <div style={{ display: "flex", overflow: "hidden", position: "relative" }}>
-        {mode === "review" && (
-          <div className="review-banner" style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}>
-            <span className="ico">⏺</span>
-            <span><b>녹음이 종료되었습니다.</b> 저장하려면 저장 버튼을 눌러주세요.</span>
-            <div className="actions">
-              <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
-              <button className="btn" onClick={onExport}>내보내기</button>
-              <button className="btn btn-primary" onClick={onSave}>저장</button>
+        {mode === "review" && (() => {
+          const { ico, text } = bannerText(notionStatus);
+          const canRetry = notionStatus.kind === "failed" || notionStatus.kind === "partial";
+          return (
+            <div className="review-banner" style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}>
+              <span className="ico">{ico}</span>
+              {text}
+              <div className="actions">
+                <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
+                {canRetry && (
+                  <button className="btn" onClick={onRetryNotion}>다시 시도</button>
+                )}
+                {notionStatus.kind === "unconfigured" && (
+                  <button className="btn" onClick={onSettings}>설정</button>
+                )}
+                <button className="btn" onClick={onExport}>내보내기</button>
+                <button className="btn btn-primary" onClick={onSave}>저장</button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 트랜스크립트 패널 */}
         <div style={{

@@ -77,7 +77,7 @@ export default function TextInputPanel({ onSubmit, onBack, loading = false }: Te
       <footer className="entry-foot">
         <button className="secondary" onClick={onBack}>취소</button>
         <button className="primary" onClick={handleSubmit} disabled={!text.trim() || loading}>
-          {loading ? "AI 분석 중..." : "노트 만들기"}
+          {loading ? "저장 중..." : "노트 만들기"}
           {!loading && (
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <polyline points="6 4 10 8 6 12" />
