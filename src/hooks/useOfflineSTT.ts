@@ -47,6 +47,7 @@ export function useOfflineSTT(): STTState {
   const turnsRef = useRef<TurnSegment[]>([]);
   const lastChunkRef = useRef<Promise<void>>(Promise.resolve());
   // 청크 간 화자 레이블 연속성 유지: 모델이 반환한 "A","B","C" → 일관된 sp 번호
+  // STT 프롬프트 힌트(prevContext)용으로도 쓰이므로 나중에 정리할 때 지우지 말 것
   const speakerLetterMapRef = useRef<Map<string, number>>(new Map());
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -69,6 +70,19 @@ export function useOfflineSTT(): STTState {
     const s = Math.floor(ms / 1000);
     const m = Math.floor(s / 60);
     return `${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  // 화자 레이블(숫자 또는 문자)을 sp 번호로 변환한다.
+  // 숫자 레이블(Gemini)이면 그대로, 문자 레이블(OpenAI "A","B")이면 speakerLetterMapRef로 누적 매핑.
+  // 발화 조립 경로와 prevContext 힌트 계산이 이 함수를 공유해 매핑이 어긋나지 않게 한다.
+  function labelToSp(label: string): number {
+    const parsed = parseInt(label, 10);
+    if (!isNaN(parsed)) return parsed || 1;
+    const letter = label.trim();
+    if (!speakerLetterMapRef.current.has(letter)) {
+      speakerLetterMapRef.current.set(letter, speakerLetterMapRef.current.size + 1);
+    }
+    return speakerLetterMapRef.current.get(letter)!;
   }
 
   // ── Wake Lock ───────────────────────────────────────────────
@@ -170,7 +184,7 @@ export function useOfflineSTT(): STTState {
         // 다음 청크의 화자 연속성 힌트. 조립된 발화 대신 가공 전 조각의 마지막 3개를 쓴다.
         prevContextRef.current = segments
           .slice(-3)
-          .map((s) => ({ sp: parseInt(s.clovaLabel, 10) || 1, text: s.text }));
+          .map((s) => ({ sp: labelToSp(s.clovaLabel), text: s.text }));
         return;
       }
 
@@ -179,18 +193,7 @@ export function useOfflineSTT(): STTState {
         const next = [...prev];
         for (const seg of segments) {
           if (!seg.text?.trim()) continue;
-          // 숫자 레이블(Gemini)이면 그대로, 문자 레이블(OpenAI "A","B")이면 누적 맵으로 변환
-          let sp: number;
-          const parsed = parseInt(seg.clovaLabel, 10);
-          if (!isNaN(parsed)) {
-            sp = parsed || 1;
-          } else {
-            const letter = seg.clovaLabel.trim();
-            if (!speakerLetterMapRef.current.has(letter)) {
-              speakerLetterMapRef.current.set(letter, speakerLetterMapRef.current.size + 1);
-            }
-            sp = speakerLetterMapRef.current.get(letter)!;
-          }
+          const sp = labelToSp(seg.clovaLabel);
           const last = next[next.length - 1];
           if (last && last.sp === sp) {
             next[next.length - 1] = { ...last, text: last.text + " " + seg.text.trim() };
