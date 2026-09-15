@@ -168,3 +168,73 @@ describe("buildBlocks", () => {
     }
   });
 });
+
+import { filterProperties } from "./notionBlocks";
+
+const fullSchema = {
+  이름: { type: "title" },
+  회의일시: { type: "date" },
+  참석자: { type: "rich_text" },
+  소요시간: { type: "rich_text" },
+  상태: { type: "select" },
+  입력방식: { type: "select" },
+};
+
+const payload: NotionMeetingPayload = {
+  title: "주간 회의",
+  meetingDate: "2026-09-15",
+  location: "3층",
+  attendees: ["김팀장", "이책임"],
+  durationText: "1:23:45",
+  entryMethod: "live",
+  turns: [],
+};
+
+describe("filterProperties", () => {
+  it("모든 속성이 있으면 전부 채우고 skipped는 비어 있다", () => {
+    const { properties, skipped } = filterProperties(fullSchema, payload);
+    expect(skipped).toEqual([]);
+    expect(properties["이름"]).toEqual({ title: [{ text: { content: "주간 회의" } }] });
+    expect(properties["회의일시"]).toEqual({ date: { start: "2026-09-15" } });
+    expect(properties["참석자"]).toEqual({ rich_text: [{ text: { content: "김팀장, 이책임" } }] });
+    expect(properties["소요시간"]).toEqual({ rich_text: [{ text: { content: "1:23:45" } }] });
+    expect(properties["상태"]).toEqual({ select: { name: "분석대기" } });
+    expect(properties["입력방식"]).toEqual({ select: { name: "live" } });
+  });
+
+  it("title 속성은 이름이 아니라 타입으로 찾는다", () => {
+    const { properties, skipped } = filterProperties({ Name: { type: "title" } }, payload);
+    expect(properties["Name"]).toEqual({ title: [{ text: { content: "주간 회의" } }] });
+    expect(skipped).toEqual(["회의일시", "참석자", "소요시간", "상태", "입력방식"]);
+  });
+
+  it("없는 속성은 제외하고 skipped에 담는다", () => {
+    const schema = { 이름: { type: "title" }, 회의일시: { type: "date" } };
+    const { properties, skipped } = filterProperties(schema, payload);
+    expect(Object.keys(properties).sort()).toEqual(["이름", "회의일시"]);
+    expect(skipped).toEqual(["참석자", "소요시간", "상태", "입력방식"]);
+  });
+
+  it("타입이 다르면 제외하고 skipped에 담는다", () => {
+    const schema = { ...fullSchema, 회의일시: { type: "rich_text" } };
+    const { skipped } = filterProperties(schema, payload);
+    expect(skipped).toContain("회의일시");
+  });
+
+  it("값이 빈 항목은 속성이 있어도 채우지 않고 skipped에도 넣지 않는다", () => {
+    const { properties, skipped } = filterProperties(fullSchema, {
+      ...payload,
+      durationText: "",
+      attendees: [],
+    });
+    expect(properties["소요시간"]).toBeUndefined();
+    expect(properties["참석자"]).toBeUndefined();
+    expect(skipped).toEqual([]);
+  });
+
+  it("title 속성이 없으면 제목을 버리지 않고 skipped에 이름을 담는다", () => {
+    const { properties, skipped } = filterProperties({ 회의일시: { type: "date" } }, payload);
+    expect(Object.keys(properties)).toEqual(["회의일시"]);
+    expect(skipped).toContain("이름(title)");
+  });
+});
