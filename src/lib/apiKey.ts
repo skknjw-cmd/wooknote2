@@ -3,6 +3,8 @@ const OPENAI_KEY = "autonote_openai_api_key";
 const CLOVA_URL_KEY = "autonote_clova_url";
 const CLOVA_SECRET_KEY = "autonote_clova_secret_key";
 const STT_PROVIDER_KEY = "autonote_stt_provider";
+const NOTION_TOKEN_KEY = "autonote_notion_token";
+const NOTION_DB_KEY = "autonote_notion_db";
 
 export type SttProvider = "gemini" | "openai" | "clova";
 
@@ -82,6 +84,57 @@ export function clovaKeyHeaders(): Record<string, string> {
   if (url) headers["x-clova-url"] = url;
   if (key) headers["x-clova-key"] = key;
   return headers;
+}
+
+// ── Notion ──────────────────────────────────────────────────────
+
+/**
+ * 붙여넣은 값에서 32자 hex 데이터베이스 ID를 뽑는다.
+ * Notion URL, 하이픈이 든 UUID, 순수 ID를 모두 받아들인다. 못 찾으면 빈 문자열.
+ */
+export function extractDatabaseId(input: string): string {
+  const compact = input.trim().replace(/-/g, "");
+  const match = compact.match(/[0-9a-fA-F]{32}/);
+  return match ? match[0] : "";
+}
+
+export function getNotionToken(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(NOTION_TOKEN_KEY) ?? "";
+}
+
+export function setNotionToken(token: string) {
+  if (token.trim()) {
+    localStorage.setItem(NOTION_TOKEN_KEY, token.trim());
+  } else {
+    localStorage.removeItem(NOTION_TOKEN_KEY);
+  }
+}
+
+export function getNotionDbId(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(NOTION_DB_KEY) ?? "";
+}
+
+/** 입력값에서 ID를 추출해 저장한다. 추출에 실패하면 저장하지 않고 기존 값을 지운다. */
+export function setNotionDbId(input: string) {
+  const id = extractDatabaseId(input);
+  if (id) {
+    localStorage.setItem(NOTION_DB_KEY, id);
+  } else {
+    localStorage.removeItem(NOTION_DB_KEY);
+  }
+}
+
+export function hasNotionConfig(): boolean {
+  return getNotionToken().length > 0 && getNotionDbId().length > 0;
+}
+
+export function notionKeyHeaders(): Record<string, string> {
+  return {
+    "x-notion-token": getNotionToken(),
+    "x-notion-db": getNotionDbId(),
+  };
 }
 
 const CLOVA_CREDIT_KEY = "autonote_clova_credit";
