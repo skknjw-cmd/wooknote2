@@ -122,8 +122,9 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
   const meta = providerMeta[provider];
 
   // 요금 계산 로직
+  // audioDuration은 밀리초 단위로 저장된다.
   const totalAudioDurationSec = notes
-    ? notes.reduce((acc, note) => acc + (note.audioDuration || 0), 0)
+    ? Math.floor(notes.reduce((acc, note) => acc + (note.audioDuration || 0), 0) / 1000)
     : 0;
   const rawClovaCost = Math.round((totalAudioDurationSec / 60) * 4);
   const clovaRemainingCredit = Math.max(0, clovaCredit - rawClovaCost);

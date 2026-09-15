@@ -26,7 +26,7 @@ export function encodeWav(pcm: Float32Array, sampleRate: number): ArrayBuffer {
 export async function chunkAudioFile(
   file: File,
   chunkDurationS = CHUNK_DURATION_S,
-): Promise<Blob[]> {
+): Promise<{ chunks: Blob[]; durationMs: number }> {
   const arrayBuf = await file.arrayBuffer();
   const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
   const audio = await ctx.decodeAudioData(arrayBuf);
@@ -41,5 +41,5 @@ export async function chunkAudioFile(
     chunks.push(new Blob([encodeWav(slice, SAMPLE_RATE)], { type: "audio/wav" }));
   }
 
-  return chunks;
+  return { chunks, durationMs: Math.round(audio.duration * 1000) };
 }

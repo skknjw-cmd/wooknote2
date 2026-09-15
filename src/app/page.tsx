@@ -420,10 +420,12 @@ export default function Home() {
       const texts: string[] = [];
       const allTurns: TurnSegment[] = [];
       let turnId = 0;
+      let audioDurationMs = 0;
 
       if (provider === "clova") {
         // Vercel Serverless Function 페이로드 제한(4.5MB)을 회피하기 위해 파일을 120초(2분) 단위 WAV 청크로 나누어 전송합니다.
-        const chunks = await chunkAudioFile(file, 120);
+        const { chunks, durationMs } = await chunkAudioFile(file, 120);
+        audioDurationMs = durationMs;
         console.log(`[audio] Clova Speech 분할 전송: ${file.name} → ${chunks.length}개 청크 (각 120초)`);
         setAudioProgress({ current: 0, total: chunks.length });
 
@@ -459,7 +461,8 @@ export default function Home() {
         }
       } else {
         // Gemini / OpenAI인 경우 파일을 120초(2분) 단위 WAV 청크로 분할하여 전송 (인식율 향상)
-        const chunks = await chunkAudioFile(file, 120);
+        const { chunks, durationMs } = await chunkAudioFile(file, 120);
+        audioDurationMs = durationMs;
         console.log(`[audio] ${file.name} → ${chunks.length}개 청크 (각 120초)`);
         setAudioProgress({ current: 0, total: chunks.length });
 
@@ -508,7 +511,7 @@ export default function Home() {
         date: new Date().toLocaleDateString("ko-KR"),
         attendees: "미정",
       });
-      const updated = applyAnalysis({ ...note, segments: allTurns, title: file.name.replace(/\.[^.]+$/, "") }, result);
+      const updated = applyAnalysis({ ...note, segments: allTurns, title: file.name.replace(/\.[^.]+$/, ""), audioDuration: audioDurationMs }, result);
       saveNote(updated);
       setAppMode("review");
       setScreen("live");
