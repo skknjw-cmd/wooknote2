@@ -300,11 +300,20 @@ export default function Home() {
       target === "new-note"
         ? stt.isRecording || stoppingRef.current
         : stt.isRecording && !!stt.recordingNoteId && !!target.noteId && stt.recordingNoteId !== target.noteId;
-    if (blocked) {
-      alert("이미 다른 노트를 녹음 중입니다. 먼저 그 녹음을 종료해주세요.");
-      return true;
+    if (!blocked) return false;
+
+    alert("이미 다른 노트를 녹음 중입니다. 먼저 그 녹음을 종료해주세요.");
+
+    // 새 녹음 시도는 로스터 화면에서 들어온다. 막기만 하고 화면을 그대로 두면
+    // 사용자가 거기 갇힌다 — 로스터에는 사이드바도 중지 버튼도 REC 표시도 없어서
+    // 진행 중인 녹음으로 돌아갈 길이 화면에 보이지 않는다. 그래서 되돌려 보낸다.
+    // (토글 거부는 이미 노트를 보고 있는 상태라 화면을 건드리지 않는다.)
+    if (target === "new-note") {
+      const id = stt.recordingNoteId;
+      if (id && notes.some((n) => n.id === id)) handleOpenNote(id);
+      else setScreen("mode-select");
     }
-    return false;
+    return true;
   }
 
   /**
