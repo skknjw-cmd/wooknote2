@@ -250,13 +250,6 @@ export default function Home() {
     saveNoteToFolder(updated).catch(console.error);
   }
 
-  /** Notion 저장 결과를 배너 문구로 옮긴다. 로컬 저장이 끝난 뒤에만 호출한다. */
-  function notionResultToStatus(result: NotionSaveState): NotionSaveState {
-    return result.kind === "failed"
-      ? { kind: "failed", message: `Notion 저장 실패 · 로컬에는 저장됨 — ${result.message}` }
-      : result;
-  }
-
   /**
    * 입력이 끝난 노트를 확정 저장한다.
    *
@@ -274,7 +267,7 @@ export default function Home() {
     } catch (err) {
       console.error("[finalize] 로컬 저장 실패:", err);
       setNotionStatus({
-        kind: "failed",
+        kind: "localFailed",
         message:
           "로컬(IndexedDB) 저장에 실패해 Notion 저장을 건너뜁니다. 회의 내용이 이 브라우저에 남지 않으니 지금 내보내기로 파일을 받아두세요.",
       });
@@ -282,7 +275,7 @@ export default function Home() {
     }
 
     setNotionStatus({ kind: "saving" });
-    setNotionStatus(notionResultToStatus(await pushToNotion(note)));
+    setNotionStatus(await pushToNotion(note));
   }
 
   async function handleRetryNotion() {
@@ -291,7 +284,7 @@ export default function Home() {
     const note = currentNote;
     if (!note) return;
     setNotionStatus({ kind: "saving" });
-    setNotionStatus(notionResultToStatus(await pushToNotion(note)));
+    setNotionStatus(await pushToNotion(note));
   }
 
   function handleSave() {

@@ -62,9 +62,11 @@ function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNo
       };
     case "unconfigured":
       return { ico: "💾", text: <span><b>로컬에 저장됨</b> · Notion 미설정</span> };
-    // 로컬 저장 실패도 이 상태를 쓴다. 문구에서 로컬 안전을 단정하지 않고,
-    // 어디까지 저장됐는지는 message가 말하게 둔다.
     case "failed":
+      return { ico: "❌", text: <span><b>Notion 저장 실패</b> · 로컬에는 저장됨 — {status.message}</span> };
+    // 로컬(IndexedDB) 저장 자체가 실패해 이 회의는 어디에도 저장되지 않은 상태.
+    // "저장됨"류 표현을 절대 쓰지 않는다 — 위험을 숨기면 안 된다.
+    case "localFailed":
       return { ico: "❌", text: <span><b>저장 실패</b> — {status.message}</span> };
     default:
       return { ico: "⏺", text: <span><b>녹음이 종료되었습니다.</b></span> };

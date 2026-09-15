@@ -225,4 +225,6 @@ export type NotionSaveState =
   | { kind: "saved"; skippedProperties: string[] }
   | { kind: "partial"; savedBlocks: number; totalBlocks: number }
   | { kind: "unconfigured" }
-  | { kind: "failed"; message: string };
+  | { kind: "failed"; message: string }
+  /** 로컬(IndexedDB) 저장 자체가 실패한 상태. 이 회의는 어디에도 저장되지 않았다. */
+  | { kind: "localFailed"; message: string };
