@@ -31,6 +31,7 @@ import {
 import { chunkAudioFile } from "@/lib/audioChunk";
 import { useOfflineSTT } from "@/hooks/useOfflineSTT";
 import { saveNote as dbSave, getNotes as dbGetNotes } from "@/lib/db";
+import { assembleTurns, nextSpeakerBase, type RawSegment } from "@/lib/turnAssembly";
 import { saveNoteToFolder, pickSaveFolder, getSaveFolderName } from "@/lib/folderStorage";
 import { pushToNotion } from "@/lib/notionSave";
 import type {
@@ -212,10 +213,17 @@ export default function Home() {
   const [audioProgress, setAudioProgress] = useState<{ current: number; total: number } | undefined>();
   const [analyzing, setAnalyzing] = useState(false);
   const [notionStatus, setNotionStatus] = useState<NotionSaveState>({ kind: "idle" });
-  // 이번 세션에서 live 녹음으로 만든 노트의 id. useOfflineSTT의 턴 버퍼는 페이지 세션 내내
-  // 누적되므로, 사이드바로 연 예전 노트에 "이어 녹음"을 허용하면 그 노트의 트랜스크립트가
-  // 다른 회의의 턴으로 덮어써져 IndexedDB·.md·Notion까지 되돌릴 수 없이 저장된다.
-  const liveNoteId = useRef<string | null>(null);
+
+  // ── 녹음 세션 상태 (녹음 1회 동안만 유효) ──
+  const recordingSegmentsRef = useRef<TurnSegment[]>([]);
+  const recordingParticipantsRef = useRef<Participant[]>([]);
+  // 녹음 중인 노트 자체를 들고 있는다. 중지 시 저장 대상은 화면에 떠 있는 노트가 아니라
+  // 이 노트다. notes에서 id로 찾으면 사용자가 다른 노트를 보고 있을 때 엉뚱한 노트가 잡힌다.
+  const recordingNoteRef = useRef<NoteRecord | null>(null);
+  const sessionLetterMap = useRef<Map<string, number>>(new Map());
+  const sessionSpeakerBase = useRef(1);
+  const sessionBaseMs = useRef(0);
+  const sessionFirstChunk = useRef(true);
 
   useEffect(() => {
     dbGetNotes().then((loaded) => { if (loaded.length) setNotes(loaded); });
@@ -224,16 +232,17 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const added = stt.turns.length - prevTurnsLen.current;
+    const len = currentNote?.segments.length ?? 0;
+    const added = len - prevTurnsLen.current;
     if (added > 0) {
-      prevTurnsLen.current = stt.turns.length;
+      prevTurnsLen.current = len;
       setPendingTurnCount((n) => n + added);
     }
-  }, [stt.turns.length]);
+  }, [currentNote?.segments.length]);
 
   function resetPending() {
     setPendingTurnCount(0);
-    prevTurnsLen.current = stt.turns.length;
+    prevTurnsLen.current = currentNote?.segments.length ?? 0;
   }
 
   function updateNoteState(updated: NoteRecord) {
@@ -242,6 +251,95 @@ export default function Home() {
       const exists = prev.find((n) => n.id === updated.id);
       return exists ? prev.map((n) => (n.id === updated.id ? updated : n)) : [updated, ...prev];
     });
+  }
+
+  /**
+   * 특정 노트의 발화를 갱신한다. 그 노트가 지금 녹음 중이면 세션 ref도 함께 맞춘다.
+   * ref를 맞추지 않으면 다음 청크가 사용자의 편집을 덮어쓴다.
+   */
+  function applySegments(noteId: string, segments: TurnSegment[]) {
+    if (stt.recordingNoteId === noteId) {
+      recordingSegmentsRef.current = segments;
+      if (recordingNoteRef.current) {
+        recordingNoteRef.current = { ...recordingNoteRef.current, segments };
+      }
+    }
+    setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, segments } : n)));
+    setCurrentNote((cur) => (cur && cur.id === noteId ? { ...cur, segments } : cur));
+  }
+
+  /** 청크 하나가 도착했을 때 녹음 중인 노트에 조립해 넣는다. */
+  function handleChunk(noteId: string, chunk: { segments: RawSegment[]; chunkStartMs: number }) {
+    const isFirst = sessionFirstChunk.current;
+    sessionFirstChunk.current = false;
+
+    const next = assembleTurns(recordingSegmentsRef.current, chunk.segments, {
+      baseMs: sessionBaseMs.current,
+      chunkStartMs: chunk.chunkStartMs,
+      letterMap: sessionLetterMap.current,
+      speakerBase: sessionSpeakerBase.current,
+      isFirstChunkOfSession: isFirst,
+    });
+
+    recordingSegmentsRef.current = next;
+    if (recordingNoteRef.current) {
+      recordingNoteRef.current = { ...recordingNoteRef.current, segments: next };
+    }
+    setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, segments: next } : n)));
+    setCurrentNote((cur) => (cur && cur.id === noteId ? { ...cur, segments: next } : cur));
+  }
+
+  /** 녹음 세션 ref를 노트 기준으로 초기화하고 훅을 시작한다. */
+  async function beginRecording(note: NoteRecord) {
+    recordingSegmentsRef.current = note.segments ?? [];
+    recordingParticipantsRef.current = note.participants ?? [];
+    recordingNoteRef.current = note;
+    sessionLetterMap.current = new Map();
+    sessionSpeakerBase.current = nextSpeakerBase(note.segments ?? []);
+    sessionBaseMs.current = note.audioDuration ?? 0;
+    sessionFirstChunk.current = true;
+
+    await stt.startRecording(note.id, {
+      onChunk: (chunk) => handleChunk(note.id, chunk),
+      getParticipants: () => recordingParticipantsRef.current,
+    });
+  }
+
+  function handleEditTurn(id: number, newText: string) {
+    const note = currentNote;
+    if (!note) return;
+    applySegments(note.id, note.segments.map((t) => (t.id === id ? { ...t, text: newText } : t)));
+  }
+
+  function handleSplitTurn(id: number, beforeText: string, afterText: string) {
+    const note = currentNote;
+    if (!note) return;
+    const idx = note.segments.findIndex((t) => t.id === id);
+    if (idx === -1) return;
+    const original = note.segments[idx];
+    const newId = Math.max(0, ...note.segments.map((t) => t.id)) + 1;
+    const next = [...note.segments];
+    next.splice(idx, 1,
+      { ...original, text: beforeText },
+      { id: newId, sp: original.sp, t: original.t, text: afterText },
+    );
+    applySegments(note.id, next);
+  }
+
+  function handleSpeakerName(sp: number, name: string) {
+    const note = currentNote;
+    if (!note) return;
+    const existing = note.participants.find((p) => p.sp === sp);
+    const participants = existing
+      ? note.participants.map((p) => (p.sp === sp ? { ...p, name, initials: name[0] ?? "" } : p))
+      : [...note.participants, { sp, name, role: "", initials: name[0] ?? "" }];
+
+    if (stt.recordingNoteId === note.id) {
+      recordingParticipantsRef.current = participants;
+    }
+    const updated = { ...note, participants };
+    updateNoteState(updated);
+    dbSave(updated).catch(console.error);
   }
 
   function saveNote(updated: NoteRecord) {
@@ -315,24 +413,30 @@ export default function Home() {
       setScreen("live");
       // 노트를 바꾸면 이전 노트의 Notion 저장 상태가 남아 오해를 부르므로 초기화한다.
       setNotionStatus({ kind: "idle" });
-      // 이 노트는 이번 세션의 녹음 대상이 아니므로 "이어 녹음"을 막는다.
-      liveNoteId.current = null;
+      // 새 발화 배지는 "이 노트에서 새로 늘어난 발화" 수다. 노트를 바꾸면 길이가
+      // 통째로 달라지므로 기준선을 여기서 다시 잡아야 사용자가 이미 본 발화가
+      // 새 발화로 세어지지 않는다.
+      prevTurnsLen.current = note.segments.length;
+      setPendingTurnCount(0);
     }
   }
 
   // ── Roster (live mode setup) ────────────────────────────────────────────────
 
   async function handleStart(roster: Participant[]) {
-    const note = emptyNote("live");
-    liveNoteId.current = note.id;
-    stt.setParticipants(roster);
-    setCurrentNote({ ...note, participants: roster });
+    const note = { ...emptyNote("live"), participants: roster };
+    // 녹음 중인 노트도 목록에 넣는다. 그래야 사이드바에 보이고, 청크가 도착할 때
+    // setNotes의 map이 이 노트를 찾아 발화를 채울 수 있다.
+    updateNoteState(note);
     setKeywords([]);
     setAppMode("live");
-    resetPending();
+    // resetPending()은 이 렌더의 currentNote(= 직전에 보던 노트)를 읽으므로 새 노트에서는
+    // 기준선이 어긋난다. 새 노트의 발화는 0개이므로 여기서 직접 0으로 잡는다.
+    setPendingTurnCount(0);
+    prevTurnsLen.current = 0;
     setScreen("live");
     try {
-      await stt.startRecording();
+      await beginRecording(note);
     } catch {
       alert("마이크 접근 권한이 필요합니다.");
       setScreen("roster");
@@ -341,14 +445,15 @@ export default function Home() {
 
   async function handleSkip() {
     const note = emptyNote("live");
-    liveNoteId.current = note.id;
-    setCurrentNote(note);
+    updateNoteState(note);
     setKeywords([]);
     setAppMode("live");
-    resetPending();
+    // handleStart와 같은 이유로 기준선을 직접 잡는다.
+    setPendingTurnCount(0);
+    prevTurnsLen.current = 0;
     setScreen("live");
     try {
-      await stt.startRecording();
+      await beginRecording(note);
     } catch {
       alert("마이크 접근 권한이 필요합니다.");
       setScreen("mode-select");
@@ -401,30 +506,23 @@ export default function Home() {
       const elapsedMs = stt.elapsedMs;
       await stt.stopRecording();
       setAppMode("review");
-      if (currentNote) {
-        // AI 분석은 하지 않는다. 사용자가 "다시 정리"를 누를 때만 실행된다.
-        const turns = stt.getLatestTurns();
-        // 세션 턴 버퍼가 비었는데 노트에 이미 트랜스크립트가 있으면 덮어쓰지 않는다.
-        // 확정 저장은 IndexedDB·폴더·Notion까지 나가므로 되돌릴 수 없다.
-        const hasExisting = (currentNote.segments?.length ?? 0) > 0;
-        const segments = turns.length === 0 && hasExisting ? currentNote.segments! : turns;
-        await finalizeNote({
-          ...currentNote,
-          participants: stt.participants,
-          segments,
-          audioDuration: elapsedMs,
-        });
-      }
+
+      // 저장 대상은 화면에 떠 있는 노트가 아니라 녹음하던 노트다. 사용자가 녹음 중
+      // 다른 노트를 열어 보고 있었다면 currentNote는 남의 노트이고, 그걸 확정 저장하면
+      // IndexedDB·.md·Notion까지 엉뚱한 내용이 나간다.
+      const target = recordingNoteRef.current;
+      if (!target) return;
+      // AI 분석은 하지 않는다. 사용자가 "다시 정리"를 누를 때만 실행된다.
+      await finalizeNote({
+        ...target,
+        segments: recordingSegmentsRef.current,
+        participants: recordingParticipantsRef.current,
+        audioDuration: sessionBaseMs.current + elapsedMs,
+      });
     } else {
-      // 이번 세션에서 녹음한 노트가 아니면 이어 녹음을 막는다. STT 턴 버퍼가 노트별로
-      // 분리돼 있지 않아, 다른 회의의 턴이 이 노트의 트랜스크립트를 덮어쓰기 때문이다.
-      // (배너의 "이어 녹음" 버튼은 이미 숨기지만, 트랜스크립트 패널 하단의 녹음 바도
-      //  같은 핸들러를 부르므로 여기서 함께 막는다.)
-      if (currentNote && currentNote.id !== liveNoteId.current) {
-        alert("이 노트에는 이어 녹음할 수 없습니다.\n새 노트를 만들어 녹음해주세요.");
-        return;
-      }
-      stt.startRecording().catch(console.error);
+      const note = currentNote;
+      if (!note) return;
+      beginRecording(note).catch(console.error);
       setAppMode("live");
     }
   }
@@ -438,9 +536,9 @@ export default function Home() {
   async function handleRegen() {
     resetPending();
     const note = currentNote ?? emptyNote("live");
-    // note.segments에 저장된 transcript 우선 사용, 없으면 live STT turns 사용
-    const turns = (note.segments?.length ?? 0) > 0 ? note.segments! : stt.turns;
-    const participants = stt.participants.length > 0 ? stt.participants : note.participants;
+    // 발화의 단일 소스는 노트다. 훅의 세션 버퍼는 더 이상 읽지 않는다.
+    const turns = note.segments ?? [];
+    const participants = note.participants ?? [];
     await analyzeFromTurns(note, turns, participants);
   }
 
@@ -602,7 +700,7 @@ export default function Home() {
   ) {
     setShowExport(false);
     if (!currentNote) return;
-    const turns = stt.turns;
+    const turns = currentNote.segments ?? [];
     const opts = options;
     try {
       if (format === "md") exportAsMarkdown(currentNote, turns, opts);
@@ -665,20 +763,20 @@ export default function Home() {
         isRecording={stt.isRecording}
         elapsedMs={stt.elapsedMs}
         sttError={stt.sttError}
-        turns={currentNote?.entryMethod === "live" || !currentNote?.entryMethod ? stt.turns : (currentNote?.segments ?? [])}
+        turns={currentNote?.segments ?? []}
         keywords={keywords}
-        participants={stt.participants}
+        participants={currentNote?.participants ?? []}
         pendingTurnCount={pendingTurnCount}
         onSelectNote={handleOpenNote}
         onNewNote={() => setScreen("mode-select")}
         onToggleRecording={handleToggleRecording}
-        onSpeakerName={stt.updateSpeakerName}
+        onSpeakerName={handleSpeakerName}
         onToggleKeyword={handleToggleKeyword}
         onExport={() => setShowExport(true)}
         onSave={handleSave}
         onRegen={handleRegen}
-        onEditTurn={stt.editTurn}
-        onSplitTurn={stt.splitTurn}
+        onEditTurn={handleEditTurn}
+        onSplitTurn={handleSplitTurn}
         onUpdateNote={saveNote}
         onSettings={() => setShowApiKey(true)}
         analyzing={analyzing}
@@ -686,7 +784,7 @@ export default function Home() {
         onPickFolder={handlePickFolder}
         notionStatus={notionStatus}
         onRetryNotion={handleRetryNotion}
-        canResumeRecording={!!currentNote && currentNote.id === liveNoteId.current}
+        canResumeRecording={!!currentNote}
       />
       {showExport && (
         <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />
