@@ -39,8 +39,9 @@ interface AppShellProps {
   onPickFolder?: () => void;
   notionStatus?: NotionSaveState;
   onRetryNotion?: () => void;
-  /** 이번 세션에서 녹음한 노트일 때만 true. false면 "이어 녹음" 버튼을 숨긴다. */
-  canResumeRecording?: boolean;
+  /** 지금 녹음 중인 노트. 보고 있는 노트와 다르면 상단에 안내를 띄운다. */
+  recordingNoteId?: string | null;
+  onGoToRecordingNote?: () => void;
 }
 
 /** 저장 상태를 배너 문구와 아이콘으로 옮긴다. */
@@ -104,7 +105,8 @@ export default function AppShell({
   onPickFolder,
   notionStatus = { kind: "idle" },
   onRetryNotion,
-  canResumeRecording = false,
+  recordingNoteId = null,
+  onGoToRecordingNote,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
@@ -139,11 +141,23 @@ export default function AppShell({
           key={currentNote?.id}
         />
         <div className="actions">
-          {mode === "live" && isRecording && (
-            <div className="live-pill">
-              <span className="dot" />
-              REC
-            </div>
+          {isRecording && (
+            recordingNoteId && currentNote && recordingNoteId !== currentNote.id ? (
+              <button
+                className="live-pill"
+                onClick={onGoToRecordingNote}
+                title="녹음 중인 노트로 이동"
+                style={{ border: "none", cursor: "pointer" }}
+              >
+                <span className="dot" />
+                다른 노트 녹음 중 · 돌아가기
+              </button>
+            ) : (
+              <div className="live-pill">
+                <span className="dot" />
+                REC
+              </div>
+            )
           )}
           {mode === "review" && (
             <button className="btn" onClick={onRegen}>
@@ -198,9 +212,7 @@ export default function AppShell({
               <span className="ico">{ico}</span>
               {text}
               <div className="actions">
-                {canResumeRecording && (
-                  <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
-                )}
+                <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
                 {canRetry && (
                   <button className="btn" onClick={onRetryNotion}>다시 시도</button>
                 )}

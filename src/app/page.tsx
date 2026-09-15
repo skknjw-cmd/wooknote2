@@ -423,18 +423,18 @@ export default function Home() {
 
   function handleOpenNote(id: string) {
     const note = notes.find((n) => n.id === id);
-    if (note) {
-      setCurrentNote(note);
-      setAppMode("review");
-      setScreen("live");
-      // 노트를 바꾸면 이전 노트의 Notion 저장 상태가 남아 오해를 부르므로 초기화한다.
-      setNotionStatus({ kind: "idle" });
-      // 새 발화 배지는 "이 노트에서 새로 늘어난 발화" 수다. 노트를 바꾸면 길이가
-      // 통째로 달라지므로 기준선을 여기서 다시 잡아야 사용자가 이미 본 발화가
-      // 새 발화로 세어지지 않는다.
-      prevTurnsLen.current = note.segments.length;
-      setPendingTurnCount(0);
-    }
+    if (!note) return;
+    setCurrentNote(note);
+    // 이 노트가 지금 녹음 중인 노트라면 live로, 아니면 review로 연다.
+    setAppMode(stt.isRecording && stt.recordingNoteId === id ? "live" : "review");
+    setScreen("live");
+    // 노트를 바꾸면 이전 노트의 Notion 저장 상태가 남아 오해를 부르므로 초기화한다.
+    setNotionStatus({ kind: "idle" });
+    // 새 발화 배지는 "이 노트에서 새로 늘어난 발화" 수다. 노트를 바꾸면 길이가
+    // 통째로 달라지므로 기준선을 여기서 다시 잡아야 사용자가 이미 본 발화가
+    // 새 발화로 세어지지 않는다.
+    prevTurnsLen.current = note.segments.length;
+    setPendingTurnCount(0);
   }
 
   // ── Roster (live mode setup) ────────────────────────────────────────────────
@@ -557,6 +557,11 @@ export default function Home() {
     } else {
       // 중지가 끝나기 전에 새 녹음을 시작하면 세션 ref를 갈아엎어 중지 중인 녹음을 잃는다.
       if (stoppingRef.current) return;
+      // 동시 녹음은 지원하지 않는다. 이미 다른 노트를 녹음 중이면 거부한다.
+      if (stt.isRecording) {
+        alert("이미 다른 노트를 녹음 중입니다. 먼저 그 녹음을 종료해주세요.");
+        return;
+      }
       const note = currentNote;
       if (!note) return;
       beginRecording(note).catch(console.error);
@@ -821,7 +826,8 @@ export default function Home() {
         onPickFolder={handlePickFolder}
         notionStatus={notionStatus}
         onRetryNotion={handleRetryNotion}
-        canResumeRecording={!!currentNote}
+        recordingNoteId={stt.recordingNoteId}
+        onGoToRecordingNote={() => { if (stt.recordingNoteId) handleOpenNote(stt.recordingNoteId); }}
       />
       {showExport && (
         <ExportModal onClose={() => setShowExport(false)} onExport={handleExport} />
