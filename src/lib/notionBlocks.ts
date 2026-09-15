@@ -13,3 +13,12 @@ export function splitText(text: string, limit: number = NOTION_TEXT_LIMIT): stri
   }
   return out;
 }
+
+/** 블록 배열을 Notion 요청 한도(기본 100개)에 맞게 나눈다. */
+export function chunkBlocks<T>(blocks: T[], size: number = NOTION_BLOCK_LIMIT): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < blocks.length; i += size) {
+    out.push(blocks.slice(i, i + size));
+  }
+  return out;
+}
