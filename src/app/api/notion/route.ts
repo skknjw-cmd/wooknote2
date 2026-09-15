@@ -6,6 +6,7 @@ import {
   filterProperties,
   type NotionPropertySchema,
 } from "@/lib/notionBlocks";
+import { lookupErrorMessage, stageForStatus } from "@/lib/notionErrors";
 import type { NotionMeetingPayload, NotionSaveResponse } from "@/types/meeting";
 
 export const maxDuration = 120;
@@ -31,17 +32,6 @@ function errorMessage(err: unknown): string {
 
 function httpStatus(err: unknown): number {
   return isHTTPResponseError(err) ? err.status : 500;
-}
-
-/** 상태 코드별 안내. 404는 통합 미초대가 가장 흔한 원인이라 그걸 앞세운다. */
-function lookupErrorMessage(status: number, err: unknown): string {
-  if (status === 401 || status === 403) {
-    return `Notion 토큰이 유효하지 않습니다. 설정에서 Internal Integration Token을 다시 확인하세요. (${errorMessage(err)})`;
-  }
-  if (status === 400) {
-    return `ID 형식이 올바르지 않거나 데이터 소스가 일치하지 않습니다. 32자 ID 또는 Notion URL을 그대로 붙여넣었는지 확인하세요. (${errorMessage(err)})`;
-  }
-  return `데이터베이스를 찾을 수 없습니다. ID가 맞는지, 그리고 Notion에서 해당 DB 우측 상단 ⋯ → 연결로 통합(Integration)을 초대했는지 확인하세요. (${errorMessage(err)})`;
 }
 
 export async function POST(req: NextRequest) {
@@ -84,7 +74,7 @@ export async function POST(req: NextRequest) {
     // 토큰 자체가 잘못된 경우에는 폴백해도 같은 이유로 실패하므로 바로 알린다.
     if (dbStatus === 401 || dbStatus === 403) {
       return NextResponse.json<NotionSaveResponse>(
-        { ok: false, stage: "auth", error: lookupErrorMessage(dbStatus, dbErr) },
+        { ok: false, stage: "auth", error: lookupErrorMessage(dbStatus, errorMessage(dbErr)) },
         { status: dbStatus },
       );
     }
@@ -97,7 +87,7 @@ export async function POST(req: NextRequest) {
     } catch {
       // 둘 다 실패했으면 원래(데이터베이스) 오류가 사용자에게 더 유용하다.
       return NextResponse.json<NotionSaveResponse>(
-        { ok: false, stage: "schema", error: lookupErrorMessage(dbStatus, dbErr) },
+        { ok: false, stage: stageForStatus(dbStatus), error: lookupErrorMessage(dbStatus, errorMessage(dbErr)) },
         { status: dbStatus },
       );
     }
