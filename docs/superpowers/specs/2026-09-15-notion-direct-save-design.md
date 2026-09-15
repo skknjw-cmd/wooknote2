@@ -58,9 +58,11 @@ finalizeNote()
         POST /api/notion
         headers: x-notion-token, x-notion-db
             ↓
-        databases.retrieve(dbId)        ← 스키마 조회
-            ↓ filterProperties()         ← 실재하는 속성만 채움
-        pages.create({ properties, children: blocks[0..99] })
+        databases.retrieve(dbId)         ← data_sources[0].id 획득
+            ↓
+        dataSources.retrieve(dsId)       ← 속성 스키마 조회
+            ↓ filterProperties()          ← 실재하는 속성만 채움
+        pages.create({ parent: { data_source_id }, properties, children: blocks[0..99] })
             ↓
         blocks.children.append × N       ← 100개씩 순차
             ↓
@@ -119,7 +121,7 @@ export type NotionMeetingPayload = {
 
 ```ts
 type NotionSaveResponse =
-  | { ok: true;  pageId: string; totalBlocks: number; skippedProperties: string[] }
+  | { ok: true;  pageId: string; totalBlocks: number; skippedProperties: string[]; dataSourceName: string }
   | { ok: false; stage: "append"; pageId: string; savedBlocks: number; totalBlocks: number; error: string }
   | { ok: false; stage: "auth" | "schema" | "create"; error: string };
 ```
@@ -134,7 +136,7 @@ type NotionSaveResponse =
 export type NotionSaveState =
   | { kind: "idle" }
   | { kind: "saving" }
-  | { kind: "saved" }
+  | { kind: "saved"; skippedProperties: string[] }
   | { kind: "partial"; savedBlocks: number; totalBlocks: number }
   | { kind: "unconfigured" }
   | { kind: "failed"; message: string };
@@ -159,9 +161,19 @@ export type NotionSaveState =
 
 Notion API는 **DB에 존재하지 않는 속성 이름을 보내면 400**을 던진다. 사용자가 속성 이름을 다르게 지었을 때 저장 전체가 실패하면 안 되므로:
 
-1. 저장 직전 `databases.retrieve(dbId)`로 실제 스키마를 읽는다.
+1. 저장 직전 `databases.retrieve({ database_id })`로 **데이터 소스 ID**를 얻고, `dataSources.retrieve({ data_source_id })`로 실제 속성 스키마를 읽는다.
 2. `filterProperties(schema, values)`가 **이름과 타입이 모두 일치하는 속성만** 남긴다.
 3. 걸러진 속성 이름을 `skippedProperties`로 반환해 배너에 "회의일시·상태 속성이 없어 건너뜀"으로 알린다.
+
+### 데이터 소스 2단계 조회가 필요한 이유
+
+설치된 `@notionhq/client@5.15.0`은 Notion의 **2025-09-03 API 버전**을 사용한다. 이 버전에서 데이터베이스는 여러 개의 **데이터 소스(data source)** 를 가질 수 있는 컨테이너로 바뀌었고, **속성 스키마는 데이터베이스가 아니라 데이터 소스에 있다**:
+
+- `databases.retrieve()`의 응답 타입 `DatabaseObjectResponse`에는 `properties` 필드가 **없고** `data_sources: Array<{ id, name }>`가 있다 (`node_modules/@notionhq/client/build/src/api-endpoints/databases.d.ts:6-24`).
+- `properties`는 `dataSources.retrieve()`의 응답에 있다 (`.../data-sources.d.ts:14-34`).
+- 페이지 생성 시 부모는 `{ data_source_id }`를 쓴다. `{ database_id }`도 타입상 허용되지만(`.../pages.d.ts:255-268`), 데이터 소스가 여럿인 데이터베이스에서는 동작이 모호하다.
+
+사용자가 설정에 넣는 값은 **데이터베이스 ID 하나**다(Notion URL에서 바로 얻을 수 있는 값이므로). 데이터 소스 ID는 라우트가 매 요청마다 `databases.retrieve`로 해석한다. 데이터 소스가 여러 개면 **첫 번째**를 쓰고, 그 이름을 `dataSourceName`으로 응답에 실어 사용자가 의도한 곳에 저장됐는지 확인할 수 있게 한다.
 
 title 속성은 이름이 무엇이든(기본값 "이름", 영문 DB면 "Name") **타입이 `title`인 속성을 찾아** 제목을 넣는다. 이름에 의존하지 않는다.
 
@@ -196,7 +208,7 @@ title 속성은 이름이 무엇이든(기본값 "이름", 영문 DB면 "Name") 
 | 요청 1건당 자식 블록 100개 | `chunkBlocks(blocks, 100)`으로 나눈다. 첫 덩어리는 `pages.create`의 `children`으로, 나머지는 `blocks.children.append`로 순차 전송. |
 | 요청 본문 크기 | 100블록 × 2000자 ≈ 200KB로 Notion 한도(약 500KB) 안. 별도 처리 불필요. |
 
-1시간 회의(발화 300~600개) 기준 요청 횟수는 `retrieve` 1 + `create` 1 + `append` 3~6회.
+1시간 회의(발화 300~600개) 기준 요청 횟수는 `databases.retrieve` 1 + `dataSources.retrieve` 1 + `pages.create` 1 + `append` 3~6회.
 
 ---
 
