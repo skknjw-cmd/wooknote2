@@ -113,6 +113,9 @@ export default function AppShell({
 
   const gridCols = collapsed ? "48px 1fr" : "240px 1fr";
 
+  // 지금 보고 있는 노트가 실제로 녹음 중인가. 다른 노트를 녹음 중이면 이 패널은 녹음 상태가 아니다.
+  const isRecordingThisNote = isRecording && (!recordingNoteId || currentNote?.id === recordingNoteId);
+
   return (
     <div
       className="app2"
@@ -144,6 +147,7 @@ export default function AppShell({
           {isRecording && (
             recordingNoteId && currentNote && recordingNoteId !== currentNote.id ? (
               <button
+                type="button"
                 className="live-pill"
                 onClick={onGoToRecordingNote}
                 title="녹음 중인 노트로 이동"
@@ -239,7 +243,7 @@ export default function AppShell({
               keywords={keywords}
               participants={participants}
               mode={mode}
-              isRecording={isRecording}
+              isRecording={isRecordingThisNote}
               elapsedMs={elapsedMs}
               sttError={sttError}
               onToggleRecording={onToggleRecording}

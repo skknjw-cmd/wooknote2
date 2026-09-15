@@ -518,6 +518,14 @@ export default function Home() {
   // ── Recording controls ──────────────────────────────────────────────────────
 
   async function handleToggleRecording() {
+    // 동시 녹음은 지원하지 않는다. 지금 녹음 중인 노트가 보고 있는 노트와 다르면
+    // 아래 두 분기(중지/시작) 중 어느 쪽으로도 보내지 않고 여기서 막는다 — 상태를
+    // 하나도 바꾸기 전에. 그렇지 않으면 이 토글은 무조건 "녹음 중인 노트"를 중지시켜
+    // 사용자가 B를 보며 누른 녹음 버튼이 A의 녹음을 조용히 종료해버린다.
+    if (stt.isRecording && stt.recordingNoteId && currentNote && stt.recordingNoteId !== currentNote.id) {
+      alert("이미 다른 노트를 녹음 중입니다. 먼저 그 녹음을 종료해주세요.");
+      return;
+    }
     if (stt.isRecording) {
       // 이미 중지 처리 중이면 아무것도 하지 않는다.
       if (stoppingRef.current) return;
@@ -557,11 +565,6 @@ export default function Home() {
     } else {
       // 중지가 끝나기 전에 새 녹음을 시작하면 세션 ref를 갈아엎어 중지 중인 녹음을 잃는다.
       if (stoppingRef.current) return;
-      // 동시 녹음은 지원하지 않는다. 이미 다른 노트를 녹음 중이면 거부한다.
-      if (stt.isRecording) {
-        alert("이미 다른 노트를 녹음 중입니다. 먼저 그 녹음을 종료해주세요.");
-        return;
-      }
       const note = currentNote;
       if (!note) return;
       beginRecording(note).catch(console.error);
