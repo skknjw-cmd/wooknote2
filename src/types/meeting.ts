@@ -173,6 +173,26 @@ export type EntryMethod = "live" | "text" | "audio" | "video";
 
 // ── Notion 저장 ──
 
+/** 매핑 가능한 앱 필드. 제목은 title 타입으로 찾으므로 제외한다. */
+export type NotionFieldKey = "meetingDate" | "attendees" | "durationText" | "status" | "entryMethod";
+
+export type NotionFieldMapping = {
+  /** 넣을 Notion 속성 이름. null이면 이 필드를 일부러 쓰지 않는다. */
+  property: string | null;
+  /** select·status 속성일 때 넣을 옵션 이름. 값 속성에서는 쓰지 않는다. */
+  option?: string | null;
+};
+
+/**
+ * 속성 매핑 설정. 한 벌만 두고 어느 data source의 것인지 함께 기록한다.
+ * 저장 시 해석된 data source와 다르면 통째로 무시하고 이름 추정으로 돌아간다.
+ */
+export type NotionMappingConfig = {
+  dataSourceId: string;
+  dataSourceName: string;
+  fields: Partial<Record<NotionFieldKey, NotionFieldMapping>>;
+};
+
 /** Notion 페이지 본문에 들어갈 발화 1개. speaker는 이미 실명으로 해석된 상태. */
 export type NotionTurn = {
   speaker: string; // "김팀장" 또는 "화자 2"
@@ -203,6 +223,8 @@ export type NotionSaveResponse =
       totalBlocks: number;
       skippedProperties: string[];
       dataSourceName: string;
+      /** 매핑이 다른 data source의 것이라 무시됐는가. */
+      mappingIgnored?: boolean;
     }
   | {
       ok: false;
@@ -218,11 +240,21 @@ export type NotionSaveResponse =
       error: string;
     };
 
+/** POST /api/notion/schema 응답. */
+export type NotionSchemaResponse =
+  | {
+      ok: true;
+      dataSourceId: string;
+      dataSourceName: string;
+      properties: Array<{ name: string; type: string; options?: string[] }>;
+    }
+  | { ok: false; stage: "auth" | "schema"; error: string };
+
 /** 화면 배너가 표시하는 저장 상태. */
 export type NotionSaveState =
   | { kind: "idle" }
   | { kind: "saving" }
-  | { kind: "saved"; skippedProperties: string[] }
+  | { kind: "saved"; skippedProperties: string[]; mappingIgnored?: boolean }
   | { kind: "partial"; savedBlocks: number; totalBlocks: number }
   | { kind: "unconfigured" }
   | { kind: "failed"; message: string }

@@ -5,7 +5,7 @@ import type {
   NotionSaveState,
   NotionTurn,
 } from "@/types/meeting";
-import { hasNotionConfig, notionKeyHeaders } from "@/lib/apiKey";
+import { hasNotionConfig, notionKeyHeaders, getNotionMapping } from "@/lib/apiKey";
 
 /** ms → "1:23:45" 또는 "2:05". 0이면 빈 문자열. */
 function formatDuration(ms: number): string {
@@ -88,7 +88,10 @@ export async function pushToNotion(note: NoteRecord): Promise<NotionSaveState> {
     const res = await fetch("/api/notion", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...notionKeyHeaders() },
-      body: JSON.stringify(noteToNotionPayload(note)),
+      body: JSON.stringify({
+        meeting: noteToNotionPayload(note),
+        mapping: getNotionMapping(),
+      }),
     });
 
     // 라우트가 NotionSaveResponse를 만들기 전에 실패하면(예: 잘못된 요청 본문) 응답 본문에
@@ -106,7 +109,11 @@ export async function pushToNotion(note: NoteRecord): Promise<NotionSaveState> {
     }
 
     if (data.ok) {
-      return { kind: "saved", skippedProperties: data.skippedProperties };
+      return {
+        kind: "saved",
+        skippedProperties: data.skippedProperties,
+        mappingIgnored: data.mappingIgnored,
+      };
     }
     if (data.stage === "append") {
       return { kind: "partial", savedBlocks: data.savedBlocks, totalBlocks: data.totalBlocks };

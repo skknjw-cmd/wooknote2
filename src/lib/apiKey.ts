@@ -1,3 +1,5 @@
+import type { NotionMappingConfig } from "@/types/meeting";
+
 const GEMINI_KEY = "autonote_gemini_api_key";
 const OPENAI_KEY = "autonote_openai_api_key";
 const CLOVA_URL_KEY = "autonote_clova_url";
@@ -144,6 +146,34 @@ export function notionKeyHeaders(): Record<string, string> {
     "x-notion-token": getNotionToken(),
     "x-notion-db": getNotionDbId(),
   };
+}
+
+const NOTION_MAPPING_KEY = "autonote_notion_mapping";
+
+/**
+ * 저장된 속성 매핑. 없거나 모양이 깨졌으면 null을 돌려준다.
+ * 손상된 설정 하나 때문에 회의 저장이 막히면 안 되므로 예외를 던지지 않는다.
+ */
+export function getNotionMapping(): NotionMappingConfig | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(NOTION_MAPPING_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as NotionMappingConfig;
+    if (!parsed || typeof parsed.dataSourceId !== "string") return null;
+    if (!parsed.fields || typeof parsed.fields !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function setNotionMapping(config: NotionMappingConfig | null) {
+  if (!config) {
+    localStorage.removeItem(NOTION_MAPPING_KEY);
+    return;
+  }
+  localStorage.setItem(NOTION_MAPPING_KEY, JSON.stringify(config));
 }
 
 const CLOVA_CREDIT_KEY = "autonote_clova_credit";

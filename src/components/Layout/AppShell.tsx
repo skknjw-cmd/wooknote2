@@ -51,13 +51,17 @@ function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNo
       // 중지 직후의 마지막 음성 처리와 그 뒤의 저장을 한 문구로 덮는다. 두 단계 모두
       // "아직 저장되지 않았다"는 같은 사실을 말해야 하므로 Notion만 집어 말하지 않는다.
       return { ico: "⏳", text: <span><b>저장 중…</b> 마지막 음성을 처리하고 저장하는 중입니다.</span> };
-    case "saved":
+    case "saved": {
+      const parts: string[] = [];
+      if (status.skippedProperties.length > 0) parts.push(`건너뛴 속성: ${status.skippedProperties.join(", ")}`);
+      if (status.mappingIgnored) parts.push("매핑이 다른 데이터베이스의 것이라 무시했습니다 — 설정에서 다시 연결 테스트를 해주세요");
       return {
         ico: "✅",
-        text: status.skippedProperties.length > 0
-          ? <span><b>저장 완료</b> · Notion에 기록됨 (건너뛴 속성: {status.skippedProperties.join(", ")})</span>
+        text: parts.length > 0
+          ? <span><b>저장 완료</b> · Notion에 기록됨 ({parts.join(" / ")})</span>
           : <span><b>저장 완료</b> · Notion에 기록됨</span>,
       };
+    }
     case "partial":
       return {
         ico: "⚠️",

@@ -6,7 +6,8 @@ import {
   filterProperties,
   type NotionPropertySchema,
 } from "@/lib/notionBlocks";
-import type { NotionMeetingPayload, NotionSaveResponse } from "@/types/meeting";
+import { resolveDataSource } from "@/lib/notionResolve";
+import type { NotionMeetingPayload, NotionMappingConfig, NotionSaveResponse } from "@/types/meeting";
 
 export const maxDuration = 120;
 
@@ -16,8 +17,21 @@ export const maxDuration = 120;
 // 둘 생기거나 트랜스크립트 블록 100개가 중복되기 때문이다.
 // 여기서 별도 재시도 래퍼를 두면 그 보호가 무너지므로 SDK 기본값을 그대로 쓴다.
 
+// SDK 기본값과 같은 값이지만 명시적으로 고정한다. 패키지를 올렸을 때 API 버전이
+// 조용히 바뀌면 데이터 소스 구조(2025-09-03에서 도입)가 통째로 달라진다.
+const NOTION_VERSION = "2025-09-03";
+
+// Notion rate limit은 평균 초당 3요청이다. append를 연달아 보낼 때 간격을 둔다.
+const APPEND_DELAY_MS = 350;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function httpStatus(err: unknown): number {
+  return isHTTPResponseError(err) ? err.status : 500;
 }
 
 export async function POST(req: NextRequest) {
@@ -31,47 +45,46 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const payload = (await req.json()) as NotionMeetingPayload;
-  const notion = new Client({ auth: token });
+  const body = (await req.json()) as {
+    meeting: NotionMeetingPayload;
+    mapping?: NotionMappingConfig | null;
+  };
+  const payload = body.meeting;
+  const mapping = body.mapping ?? null;
+  const notion = new Client({ auth: token, notionVersion: NOTION_VERSION });
 
-  // 1. 데이터베이스 → 데이터 소스 ID 해석
-  //    2025-09-03 API에서 속성 스키마는 데이터베이스가 아니라 데이터 소스에 있다.
-  let dataSourceId: string;
-  let dataSourceName: string;
-  try {
-    const db = await notion.databases.retrieve({ database_id: databaseId });
-    const sources = "data_sources" in db ? db.data_sources : [];
-    if (sources.length === 0) {
-      return NextResponse.json<NotionSaveResponse>(
-        { ok: false, stage: "schema", error: "이 데이터베이스에는 데이터 소스가 없습니다." },
-        { status: 400 },
-      );
-    }
-    dataSourceId = sources[0].id;
-    dataSourceName = sources[0].name;
-  } catch (err) {
-    const status = isHTTPResponseError(err) ? err.status : 500;
-    const stage = status === 401 || status === 403 ? "auth" : "schema";
-    const error =
-      stage === "auth"
-        ? "Notion 토큰이 유효하지 않거나 통합이 데이터베이스에 초대되지 않았습니다."
-        : `데이터베이스를 찾을 수 없습니다. 데이터베이스 ID가 맞는지, 그리고 Notion에서 통합(Integration)을 이 데이터베이스에 초대했는지 확인하세요. (${errorMessage(err)})`;
-    return NextResponse.json<NotionSaveResponse>({ ok: false, stage, error }, { status });
+  // 1. 입력값을 데이터 소스로 해석한다.
+  //    2025-09-03 API에서 데이터베이스는 데이터 소스의 컨테이너이고, 속성 스키마는
+  //    데이터베이스가 아니라 데이터 소스에 있다. 사용자가 둘 중 어느 ID를 붙여넣었는지
+  //    구분할 방법이 없으므로 데이터베이스로 먼저 시도하고, 실패하면 데이터 소스로 본다.
+  const resolved = await resolveDataSource(notion, databaseId);
+  if (!resolved.ok) {
+    return NextResponse.json<NotionSaveResponse>(
+      { ok: false, stage: resolved.stage, error: resolved.error },
+      { status: resolved.status },
+    );
   }
+  const { dataSourceId, dataSourceName } = resolved;
 
-  // 2. 속성 스키마 조회 → 실재하는 속성만 채움
+  // 매핑이 다른 data source의 것이면 쓰지 않는다. 속성 이름이 우연히 겹치면
+  // 엉뚱한 곳에 값이 들어가고, 사용자는 왜 그런지 알 수 없다.
+  const mappingUsable = !!mapping && mapping.dataSourceId === dataSourceId;
+  const mappingIgnored = !!mapping && !mappingUsable;
+
+  // 2. 속성 스키마 → 실재하는 속성만 채움
   let properties: Record<string, unknown>;
   let skippedProperties: string[];
   try {
-    const ds = await notion.dataSources.retrieve({ data_source_id: dataSourceId });
-    const schema: NotionPropertySchema = ds.properties;
-    const filtered = filterProperties(schema, payload);
+    const schema: NotionPropertySchema =
+      resolved.schema ??
+      (await notion.dataSources.retrieve({ data_source_id: dataSourceId })).properties;
+    const filtered = filterProperties(schema, payload, mappingUsable ? mapping.fields : null);
     properties = filtered.properties;
     skippedProperties = filtered.skipped;
   } catch (err) {
     return NextResponse.json<NotionSaveResponse>(
       { ok: false, stage: "schema", error: `속성 스키마를 읽지 못했습니다. (${errorMessage(err)})` },
-      { status: isHTTPResponseError(err) ? err.status : 500 },
+      { status: httpStatus(err) },
     );
   }
 
@@ -91,13 +104,15 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     return NextResponse.json<NotionSaveResponse>(
       { ok: false, stage: "create", error: `페이지를 만들지 못했습니다. (${errorMessage(err)})` },
-      { status: isHTTPResponseError(err) ? err.status : 500 },
+      { status: httpStatus(err) },
     );
   }
 
   let savedBlocks = (chunks[0] ?? []).length;
   for (const chunk of chunks.slice(1)) {
     try {
+      // 요청 사이에 간격을 둬 rate limit(평균 초당 3요청)에 걸리지 않게 한다.
+      await sleep(APPEND_DELAY_MS);
       await notion.blocks.children.append({ block_id: pageId, children: chunk as never });
       savedBlocks += chunk.length;
     } catch (err) {
@@ -119,5 +134,6 @@ export async function POST(req: NextRequest) {
     totalBlocks,
     skippedProperties,
     dataSourceName,
+    mappingIgnored,
   });
 }
