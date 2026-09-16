@@ -117,7 +117,6 @@ export default function AppShell({
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(false);
 
-  const gridCols = collapsed ? "48px 1fr" : "240px 1fr";
 
   // 지금 보고 있는 노트가 실제로 녹음 중인가. 다른 노트를 녹음 중이면 이 패널은 녹음 상태가 아니다.
   const isRecordingThisNote = isRecording && (!recordingNoteId || currentNote?.id === recordingNoteId);
@@ -126,8 +125,8 @@ export default function AppShell({
 
   return (
     <div
-      className="app2"
-      style={{ gridTemplateColumns: gridCols, height: "100vh" }}
+      className={`app2${collapsed ? " sidebar-collapsed" : ""}`}
+      style={{ height: "100vh" }}
     >
       {/* Top bar */}
       <div className="topbar" style={{ gridColumn: "1 / -1" }}>
@@ -239,7 +238,10 @@ export default function AppShell({
                 participants={participants}
                 mode={mode}
                 isRecording={isRecordingThisNote}
-                elapsedMs={elapsedMs}
+                // review에서는 stt.elapsedMs를 쓰면 안 된다 — 이 카운터는 녹음을 시작할 때만
+                // 리셋되고 노트를 열 때는 그대로라, 저장된 노트를 열면 총 00:00이거나 직전
+                // 녹음 길이가 뜬다. 끝난 회의의 길이는 노트가 들고 있다.
+                elapsedMs={mode === "review" ? (currentNote?.audioDuration ?? 0) : elapsedMs}
                 sttError={sttError}
                 onToggleRecording={onToggleRecording}
                 onSpeakerName={onSpeakerName}
@@ -267,7 +269,6 @@ export default function AppShell({
           {/* 오른쪽 패널 — 폭은 접힘 상태에서 계산되므로 인라인으로 둔다 */}
           <div
             className={panelCollapsed ? "side-panel collapsed" : "side-panel"}
-            style={{ width: panelCollapsed ? 0 : 320 }}
           >
             <MeetingInfoPanel
               note={currentNote}
