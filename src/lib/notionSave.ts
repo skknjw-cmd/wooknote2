@@ -81,9 +81,15 @@ export function noteToNotionPayload(note: NoteRecord): NotionMeetingPayload {
  * 이 노트가 이미 만든 Notion 페이지를 가리키는 좌표. 없으면 새로 만든다는 뜻이다.
  * 발화 수로 세는 이유는 NoteRecord.notionSyncedTurns 주석 참고.
  */
-function notionTarget(note: NoteRecord): { pageId: string; fromTurn: number } | null {
+function notionTarget(
+  note: NoteRecord,
+): { pageId: string; fromTurn: number; syncedTitle?: string } | null {
   if (!note.notionPageId) return null;
-  return { pageId: note.notionPageId, fromTurn: note.notionSyncedTurns ?? 0 };
+  return {
+    pageId: note.notionPageId,
+    fromTurn: note.notionSyncedTurns ?? 0,
+    syncedTitle: note.notionSyncedTitle,
+  };
 }
 
 /**
@@ -127,6 +133,7 @@ export async function pushToNotion(note: NoteRecord): Promise<NotionSaveState> {
         pageRecreated: data.pageRecreated,
         pageId: data.pageId,
         syncedTurns: data.syncedTurns,
+        syncedTitle: data.syncedTitle,
       };
     }
     if (data.stage === "append") {

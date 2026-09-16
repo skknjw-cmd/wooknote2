@@ -13,6 +13,7 @@ import type {
   NotionMappingConfig,
   NotionSaveResponse,
   NotionFieldKey,
+  NotionUpdateKey,
 } from "@/types/meeting";
 
 export const maxDuration = 120;
@@ -40,8 +41,27 @@ function httpStatus(err: unknown): number {
   return isHTTPResponseError(err) ? err.status : 500;
 }
 
-/** 이어 붙이기에서 갱신할 속성. 제목·회의일시·입력방식은 건드리지 않는다. */
+/**
+ * 이어 붙이기에서 늘 갱신하는 속성. 회의일시·입력방식은 이어 녹음으로 바뀌지 않는다.
+ * 제목은 앱에서 바뀌었을 때만 여기에 더한다(아래 appendUpdateFields 참고).
+ */
 const APPEND_UPDATE_FIELDS: NotionFieldKey[] = ["durationText", "attendees", "status"];
+
+/**
+ * 이번 갱신에서 바꿀 속성을 정한다.
+ *
+ * 제목은 앱의 제목이 마지막으로 보낸 제목과 다를 때만 넣는다. 매번 덮어쓰면 Notion에서
+ * 더 낫게 고쳐 둔 제목이 이어 녹음마다 되돌아가고, 아예 빼면 1차 녹음 뒤에 붙인 제목이
+ * 영영 반영되지 않는다. syncedTitle이 없는 노트(이 기능 이전에 저장된 노트)는 마지막으로
+ * 보낸 제목을 알 수 없으므로 한 번 맞춰준다.
+ */
+function appendUpdateFields(
+  payload: NotionMeetingPayload,
+  target: { syncedTitle?: string },
+): NotionUpdateKey[] {
+  const titleChanged = payload.title !== target.syncedTitle;
+  return titleChanged ? [...APPEND_UPDATE_FIELDS, "title"] : APPEND_UPDATE_FIELDS;
+}
 
 type CreateResult =
   | { ok: true; pageId: string }
@@ -86,7 +106,7 @@ export async function POST(req: NextRequest) {
     meeting: NotionMeetingPayload;
     mapping?: NotionMappingConfig | null;
     /** 있으면 새로 만들지 않고 이 페이지에 이어 붙인다. */
-    target?: { pageId: string; fromTurn: number } | null;
+    target?: { pageId: string; fromTurn: number; syncedTitle?: string } | null;
   };
   const payload = body.meeting;
   const mapping = body.mapping ?? null;
@@ -125,9 +145,13 @@ export async function POST(req: NextRequest) {
   }
   const fields = mappingUsable ? mapping.fields : null;
 
-  // 이어 붙이기일 때는 소요시간·참석자·상태만 갱신한다. 제목·회의일시·입력방식은
-  // 이어 녹음으로 바뀌지 않고, 제목은 Claude가 더 나은 것으로 고쳐 놓았을 수 있다.
-  const filtered = filterProperties(schema, payload, fields, target ? APPEND_UPDATE_FIELDS : undefined);
+  // 이어 붙이기는 일부 속성만 갱신한다. 무엇을 갱신할지는 appendUpdateFields가 정한다.
+  const filtered = filterProperties(
+    schema,
+    payload,
+    fields,
+    target ? appendUpdateFields(payload, target) : undefined,
+  );
   let properties = filtered.properties;
   let skippedProperties = filtered.skipped;
 
@@ -217,5 +241,6 @@ export async function POST(req: NextRequest) {
     appended,
     pageRecreated,
     syncedTurns: payload.turns.length,
+    syncedTitle: payload.title,
   });
 }
