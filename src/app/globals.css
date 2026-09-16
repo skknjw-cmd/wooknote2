@@ -378,6 +378,11 @@ a { color: inherit; text-decoration: none; }
 .nblock p { font-size: 14px; line-height: 1.7; color: var(--ink-2); text-wrap: pretty; }
 .nblock p + p { margin-top: 8px; }
 
+/* ── Meeting info panel (오른쪽 패널) ── */
+.meeting-info-panel { padding: 20px 16px; }
+.prop-row-readonly { cursor: default; }
+.prop-row-readonly:hover { background: none; }
+
 .ai-block { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px 16px; }
 .ai-block:hover { background: var(--surface-2); }
 .ai-block ul { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 0; }
