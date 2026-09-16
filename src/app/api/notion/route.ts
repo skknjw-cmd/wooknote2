@@ -6,7 +6,7 @@ import {
   filterProperties,
   type NotionPropertySchema,
 } from "@/lib/notionBlocks";
-import { lookupErrorMessage, stageForStatus } from "@/lib/notionErrors";
+import { resolveDataSource } from "@/lib/notionResolve";
 import type { NotionMeetingPayload, NotionSaveResponse } from "@/types/meeting";
 
 export const maxDuration = 120;
@@ -52,53 +52,21 @@ export async function POST(req: NextRequest) {
   //    2025-09-03 API에서 데이터베이스는 데이터 소스의 컨테이너이고, 속성 스키마는
   //    데이터베이스가 아니라 데이터 소스에 있다. 사용자가 둘 중 어느 ID를 붙여넣었는지
   //    구분할 방법이 없으므로 데이터베이스로 먼저 시도하고, 실패하면 데이터 소스로 본다.
-  let dataSourceId: string;
-  let dataSourceName: string;
-  //    폴백이 성공하면 스키마를 그 응답에서 바로 얻으므로 2차 조회를 건너뛴다.
-  let schemaFromFallback: NotionPropertySchema | null = null;
-
-  try {
-    const db = await notion.databases.retrieve({ database_id: databaseId });
-    const sources = "data_sources" in db ? db.data_sources : [];
-    if (sources.length === 0) {
-      return NextResponse.json<NotionSaveResponse>(
-        { ok: false, stage: "schema", error: "이 데이터베이스에는 데이터 소스가 없습니다." },
-        { status: 400 },
-      );
-    }
-    dataSourceId = sources[0].id;
-    dataSourceName = sources[0].name;
-  } catch (dbErr) {
-    const dbStatus = httpStatus(dbErr);
-
-    // 토큰 자체가 잘못된 경우에는 폴백해도 같은 이유로 실패하므로 바로 알린다.
-    if (dbStatus === 401 || dbStatus === 403) {
-      return NextResponse.json<NotionSaveResponse>(
-        { ok: false, stage: "auth", error: lookupErrorMessage(dbStatus, errorMessage(dbErr)) },
-        { status: dbStatus },
-      );
-    }
-
-    try {
-      const ds = await notion.dataSources.retrieve({ data_source_id: databaseId });
-      dataSourceId = ds.id;
-      dataSourceName = "title" in ds ? (ds.title[0]?.plain_text ?? "") : "";
-      schemaFromFallback = ds.properties;
-    } catch {
-      // 둘 다 실패했으면 원래(데이터베이스) 오류가 사용자에게 더 유용하다.
-      return NextResponse.json<NotionSaveResponse>(
-        { ok: false, stage: stageForStatus(dbStatus), error: lookupErrorMessage(dbStatus, errorMessage(dbErr)) },
-        { status: dbStatus },
-      );
-    }
+  const resolved = await resolveDataSource(notion, databaseId);
+  if (!resolved.ok) {
+    return NextResponse.json<NotionSaveResponse>(
+      { ok: false, stage: resolved.stage, error: resolved.error },
+      { status: resolved.status },
+    );
   }
+  const { dataSourceId, dataSourceName } = resolved;
 
   // 2. 속성 스키마 → 실재하는 속성만 채움
   let properties: Record<string, unknown>;
   let skippedProperties: string[];
   try {
     const schema: NotionPropertySchema =
-      schemaFromFallback ??
+      resolved.schema ??
       (await notion.dataSources.retrieve({ data_source_id: dataSourceId })).properties;
     const filtered = filterProperties(schema, payload);
     properties = filtered.properties;
