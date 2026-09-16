@@ -57,7 +57,7 @@ npm run dev
 
 ## 🛠 Tech Stack
 
-- **Frontend**: Next.js 14 (App Router), TypeScript, Vanilla CSS
+- **Frontend**: Next.js 16 (App Router), TypeScript, Vanilla CSS
 - **AI/ML**: Google Gemini 2.5 Flash, Naver Clova Speech (Diarization)
 - **Document Engine**: 브라우저 인쇄(PDF), `docx` (MS Word)
 - **Integration**: Notion API via `@notionhq/client`

@@ -159,8 +159,12 @@ export default function AppShell({
           placeholder="제목 없음"
           // key에 제목을 넣는 이유: 이 입력칸은 비제어(defaultValue)라서, 본문에서
           // 제목이 바뀌어도 스스로 다시 그리지 않는다. 제목이 바뀔 때 remount 시켜
-          // 두 입력구가 서로 다른 제목을 보여주는 일을 막는다. blur 직후에만 바뀌므로
-          // 타이핑 중 포커스를 잃지 않는다.
+          // 두 입력구가 서로 다른 제목을 보여주는 일을 막는다.
+          // 주의: key는 이 입력칸의 자체 blur뿐 아니라, [다시 정리]가 분석 결과로
+          // 받아온 새 제목이 반영될 때도 바뀐다(page.tsx의 applyAnalysis → title:
+          // result.title). 후자는 callAnalyze를 몇 초간 기다린 뒤 비동기로 오므로,
+          // 그 사이 이 입력칸에 포커스를 두고 타이핑 중이었다면 remount로 입력 중이던
+          // 글자가 그대로 날아간다.
           key={`${currentNote?.id}:${currentNote?.title}`}
           onBlur={(e) => {
             const note = currentNote;
