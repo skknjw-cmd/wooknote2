@@ -557,10 +557,6 @@ a { color: inherit; text-decoration: none; }
   padding: 10px 16px; border-top: 1px solid var(--border);
   background: var(--surface);
 }
-.action-bar .ab-elapsed {
-  font-family: var(--font-mono); font-size: 11.5px;
-  color: var(--ink-4); font-variant-numeric: tabular-nums;
-}
 .action-bar .ab-actions { margin-left: auto; display: flex; gap: 6px; }
 
 /* ── 헤더 Notion 상태 칩 ── */

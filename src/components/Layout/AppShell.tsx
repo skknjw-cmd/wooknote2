@@ -68,7 +68,7 @@ function statusChip(status: NotionSaveState): { ico: string; label: string } {
       return { ico: "❌", label: "실패" };
     // 로컬 저장까지 실패한 경우 — "저장됨"류 표현을 쓰지 않는다.
     case "localFailed":
-      return { ico: "❌", label: "저장 실패" };
+      return { ico: "❌", label: "로컬도 실패" };
     default:
       return { ico: "⏺", label: "저장 전" };
   }
@@ -284,8 +284,6 @@ export default function AppShell({
 
         <ActionBar
           mode={mode}
-          elapsedMs={elapsedMs}
-          isRecording={isRecordingThisNote}
           onToggleRecording={onToggleRecording}
           onExport={onExport}
           onSave={onSave}

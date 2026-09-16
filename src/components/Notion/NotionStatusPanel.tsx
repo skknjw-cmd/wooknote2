@@ -68,7 +68,7 @@ function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNo
     case "localFailed":
       return { ico: "❌", text: <span><b>저장 실패</b> — {status.message}</span> };
     default:
-      return { ico: "⏺", text: <span><b>녹음이 종료되었습니다.</b></span> };
+      return { ico: "⏺", text: <span><b>아직 저장하지 않았습니다.</b></span> };
   }
 }
 
