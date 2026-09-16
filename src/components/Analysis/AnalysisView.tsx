@@ -212,8 +212,18 @@ export default function AnalysisView({
   onClose,
 }: AnalysisViewProps) {
   // Esc로 닫는다. 전체 화면을 덮으므로 빠져나갈 길이 분명해야 한다.
+  //
+  // 단 입력 중일 때는 양보한다. 이 화면 안의 InlineInput·ActionDraftRow·contentEditable
+  // 글머리는 Esc를 "이 편집 취소"로 쓰는데, React의 합성 핸들러는 버블링 중에 돌고 이
+  // window 리스너는 그보다 뒤에 돈다. 그래서 그냥 두면 결정사항 초안을 Esc로 무르는 순간
+  // 화면 전체가 같이 닫히고, contentEditable에서는 언마운트라 onBlur도 안 불려 고치던
+  // 내용이 그대로 날아간다.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -313,7 +323,10 @@ export default function AnalysisView({
                 </span>
               )}
               <div className="meta">
-                <button className="gen-btn" onClick={handleRegen} disabled={regenerating}>
+                {/* regenerating 타이머(1.5초)는 실제 분석 시간과 무관하다. analyzing까지
+                    함께 보지 않으면 버튼만 먼저 "다시 정리"로 돌아와, 바로 아래 본문이
+                    "AI 분석 중..."인 동안 다시 눌러 /api/analyze를 한 번 더 부를 수 있다. */}
+                <button className="gen-btn" onClick={handleRegen} disabled={regenerating || analyzing}>
                   {regenerating ? "생성 중..." : (
                     <>
                       <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">

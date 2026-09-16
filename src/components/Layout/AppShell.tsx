@@ -282,7 +282,6 @@ export default function AppShell({
               onRetry={onRetryNotion}
               onSettings={onSettings}
               onOpenAnalysis={() => setAnalysisOpen(true)}
-              analyzing={analyzing}
             />
           </div>
         </div>

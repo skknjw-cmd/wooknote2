@@ -20,7 +20,7 @@ interface LiveTranscriptProps {
   onSplitTurn: (id: number, beforeText: string, afterText: string) => void;
 }
 
-export function formatElapsed(ms: number): string {
+function formatElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);

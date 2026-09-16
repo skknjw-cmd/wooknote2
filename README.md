@@ -48,7 +48,7 @@ npm run dev
 브라우저에서 `http://localhost:3000` 접속
 
 ### 2. API 자격 증명 설정 (필수)
-앱 우측 상단의 **톱니바퀴(⚙️) 버튼**을 눌러 다음 정보를 설정하세요:
+왼쪽 사이드바 맨 아래의 **톱니바퀴(⚙️) 버튼**을 눌러 다음 정보를 설정하세요(사이드바를 접으면 보이지 않으니 먼저 펼치세요):
 - **Google Gemini API Key**: AI 분석 엔진용 (v2.5 Flash 모델 사용)
 - **Clova Speech**: `Invoke URL` 및 `Secret Key` (음성 인식 및 화자 분리용)
 - **Notion Integration**: `Internal Integration Token` 및 `Database ID`

@@ -28,9 +28,14 @@ export default function ActionBar({
 }: ActionBarProps): React.JSX.Element | null {
   if (mode !== "review") return null;
 
-  // review 모드는 녹음 중이 아님이 보장된다(page.tsx: 녹음이 시작되면 appMode는
-  // "live"이고, handleOpenNote는 녹음 중인 노트를 열 때만 "live"를 고른다).
-  // 그래서 이 버튼은 늘 "이어 녹음"이다.
+  // 보장되는 것은 "녹음 중이 아니다"가 아니라 "지금 보고 있는 이 노트는 녹음 중이 아니다"다.
+  // appMode가 review가 되는 길은 둘뿐이고(page.tsx), 둘 다 이 노트를 녹음 대상에서 빼놓는다:
+  //   1) handleOpenNote — 여는 노트가 stt.recordingNoteId와 다를 때만 review를 고른다.
+  //   2) handleToggleRecording의 중지 분기 — 이 노트의 녹음을 끝내며 review로 넘어간다
+  //      (stopRecording이 같은 배치에서 isRecording을 false로 내린다).
+  // stt.isRecording 자체는 review에서도 참일 수 있다. A를 녹음하는 중에 사이드바에서 B를 열면
+  // B는 review인데 A의 녹음은 계속 돌아간다. 그래도 라벨을 정하는 것은 "이 노트"이므로 B의
+  // 버튼은 "이어 녹음"이 맞고, 실제로 누르면 page.tsx의 refuseWhileRecording이 막아 세운다.
   return (
     <div className="action-bar">
       <div className="ab-actions">

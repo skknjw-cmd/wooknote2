@@ -12,7 +12,6 @@ export interface NotionStatusPanelProps {
   onRetry?: () => void;
   onSettings?: () => void;
   onOpenAnalysis: () => void;
-  analyzing?: boolean;
 }
 
 /**
@@ -89,7 +88,6 @@ export default function NotionStatusPanel({
   onRetry,
   onSettings,
   onOpenAnalysis,
-  analyzing = false,
 }: NotionStatusPanelProps) {
   const { ico, text } = bannerText(status, notionPageId);
 
@@ -141,7 +139,10 @@ export default function NotionStatusPanel({
       </div>
 
       <div className="n-footer">
-        <button className="btn" onClick={onOpenAnalysis} disabled={analyzing}>
+        {/* 이 버튼은 분석을 돌리지 않고 분석 화면을 열기만 한다(헤더의 같은 버튼과 동일).
+            분석 중이라고 잠그면, 오버레이를 닫아 둔 사람은 진행 중인 분석을 다시 볼 길이
+            없어진다. 실제 재분석은 그 화면 안의 버튼이 맡고, 거기서만 중복을 막는다. */}
+        <button className="btn" onClick={onOpenAnalysis}>
           다시 정리
         </button>
       </div>
