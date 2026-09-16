@@ -16,12 +16,12 @@ export interface NotionStatusPanelProps {
 }
 
 /**
- * 저장 상태를 배너 문구와 아이콘으로 옮긴다.
+ * 저장 상태를 문구와 아이콘으로 옮긴다.
  *
- * src/components/Layout/AppShell.tsx의 bannerText를 그대로 복사했다 — 문구를
- * 새로 지어내면 이전 단계에서 맞춰 놓은 사실관계(재생성/무시된 매핑/부분 저장 시
- * 재시도가 중복을 만든다는 점)가 다시 갈라진다. AppShell은 이 작업에서 건드리지
- * 않으므로 지금은 중복이지만, 배선은 다음 커밋에서 정리한다.
+ * 이 문구들을 쓰는 곳은 여기뿐이다. 새로 지어내거나 옆에 복사본을 두면 이전 단계에서
+ * 맞춰 놓은 사실관계(페이지 재생성 / 무시된 매핑 / 부분 저장 뒤의 재시도가 중복을
+ * 만든다는 점)가 다시 갈라진다. 헤더 칩은 한 마디만 필요해서 AppShell이 따로 짧은
+ * 매핑을 쓴다 — 이 문장들을 거기로 옮기지 않는다.
  */
 function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNode } {
   switch (status.kind) {
@@ -84,8 +84,8 @@ export default function NotionStatusPanel({
 }: NotionStatusPanelProps) {
   const { ico, text } = bannerText(status);
 
-  // AppShell의 review-banner와 똑같은 조건 — 저장에 성공한 뒤에도 다시 보낼 수
-  // 있어야 하고(제목·참석자를 고친 뒤 재전송), 실패·부분 저장은 재시도 대상이다.
+  // 저장에 성공한 뒤에도 다시 보낼 수 있어야 한다 — 제목·참석자를 고친 뒤 이 버튼이
+  // 없으면 Notion 페이지는 낡은 값을 그대로 달고 있는다. 실패·부분 저장은 재시도 대상이다.
   const canResend = status.kind === "saved" && !!status.pageId;
   const canRetry = status.kind === "failed" || status.kind === "partial" || canResend;
 

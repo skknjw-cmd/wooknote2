@@ -3,7 +3,10 @@
 import React, { useState } from "react";
 import NoteList from "@/components/Sidebar/NoteList";
 import LiveTranscript from "@/components/Recording/LiveTranscript";
-import NoteDocument from "@/components/NoteDoc/NoteDocument";
+import ActionBar from "@/components/Layout/ActionBar";
+import AnalysisView from "@/components/Analysis/AnalysisView";
+import MeetingInfoPanel from "@/components/NoteDoc/MeetingInfoPanel";
+import NotionStatusPanel from "@/components/Notion/NotionStatusPanel";
 import ModelLoadingOverlay from "@/components/Layout/ModelLoadingOverlay";
 import type { NoteRecord, Participant, TurnSegment, NotionSaveState } from "@/types/meeting";
 
@@ -44,53 +47,30 @@ interface AppShellProps {
   onGoToRecordingNote?: () => void;
 }
 
-/** 저장 상태를 배너 문구와 아이콘으로 옮긴다. */
-function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNode } {
+/**
+ * 헤더 칩에 쓸 한 마디 요약.
+ *
+ * NotionStatusPanel의 bannerText를 끌어다 쓰지 않는다 — 저쪽은 한 문장짜리 설명이라
+ * 칩 한 칸에 들어가지 않는다. 자세한 사정(어디에 저장됐는지, 다시 시도하면 무슨 일이
+ * 생기는지)은 칩을 눌러 여는 오른쪽 패널이 말한다. 아이콘만 같은 것을 쓴다.
+ */
+function statusChip(status: NotionSaveState): { ico: string; label: string } {
   switch (status.kind) {
     case "saving":
-      // 중지 직후의 마지막 음성 처리와 그 뒤의 저장을 한 문구로 덮는다. 두 단계 모두
-      // "아직 저장되지 않았다"는 같은 사실을 말해야 하므로 Notion만 집어 말하지 않는다.
-      return { ico: "⏳", text: <span><b>저장 중…</b> 마지막 음성을 처리하고 저장하는 중입니다.</span> };
-    case "saved": {
-      const parts: string[] = [];
-      if (status.skippedProperties.length > 0) parts.push(`건너뛴 속성: ${status.skippedProperties.join(", ")}`);
-      if (status.mappingIgnored) parts.push("매핑이 다른 데이터베이스의 것이라 무시했습니다 — 설정에서 다시 연결 테스트를 해주세요");
-      // 이어 붙였는지 새로 만들었는지는 사용자가 Notion에서 무엇을 보게 될지를 바꾼다.
-      // 페이지를 다시 만든 경우는 특히 알려야 한다 — 앞의 회의록이 사라졌다는 뜻이다.
-      const where = status.pageRecreated
-        ? "기존 페이지를 찾을 수 없어 새 페이지로 저장됨"
-        : status.appended
-          ? "기존 Notion 페이지에 이어 붙임"
-          : "Notion에 기록됨";
-      return {
-        ico: status.pageRecreated ? "⚠️" : "✅",
-        text: parts.length > 0
-          ? <span><b>저장 완료</b> · {where} ({parts.join(" / ")})</span>
-          : <span><b>저장 완료</b> · {where}</span>,
-      };
-    }
+      return { ico: "⏳", label: "저장 중…" };
+    case "saved":
+      return { ico: status.pageRecreated ? "⚠️" : "✅", label: "저장됨" };
     case "partial":
-      return {
-        ico: "⚠️",
-        text: (
-          <span>
-            <b>일부만 저장됨</b> ({status.savedBlocks}/{status.totalBlocks} 블록) ·{" "}
-            {status.appended
-              ? "다시 시도하면 이미 올라간 부분이 중복될 수 있습니다."
-              : "다시 시도하면 새 페이지가 만들어집니다."}
-          </span>
-        ),
-      };
+      return { ico: "⚠️", label: "일부 저장" };
     case "unconfigured":
-      return { ico: "💾", text: <span><b>로컬에 저장됨</b> · Notion 미설정</span> };
+      return { ico: "💾", label: "미설정" };
     case "failed":
-      return { ico: "❌", text: <span><b>Notion 저장 실패</b> · 로컬에는 저장됨 — {status.message}</span> };
-    // 로컬(IndexedDB) 저장 자체가 실패해 이 회의는 어디에도 저장되지 않은 상태.
-    // "저장됨"류 표현을 절대 쓰지 않는다 — 위험을 숨기면 안 된다.
+      return { ico: "❌", label: "실패" };
+    // 로컬 저장까지 실패한 경우 — "저장됨"류 표현을 쓰지 않는다.
     case "localFailed":
-      return { ico: "❌", text: <span><b>저장 실패</b> — {status.message}</span> };
+      return { ico: "❌", label: "저장 실패" };
     default:
-      return { ico: "⏺", text: <span><b>녹음이 종료되었습니다.</b></span> };
+      return { ico: "⏺", label: "저장 전" };
   }
 }
 
@@ -129,12 +109,15 @@ export default function AppShell({
   onGoToRecordingNote,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
 
   const gridCols = collapsed ? "48px 1fr" : "240px 1fr";
 
   // 지금 보고 있는 노트가 실제로 녹음 중인가. 다른 노트를 녹음 중이면 이 패널은 녹음 상태가 아니다.
   const isRecordingThisNote = isRecording && (!recordingNoteId || currentNote?.id === recordingNoteId);
+
+  const chip = statusChip(notionStatus);
 
   return (
     <div
@@ -199,7 +182,9 @@ export default function AppShell({
             )
           )}
           {mode === "review" && (
-            <button className="btn" onClick={onRegen}>
+            // 분석을 바로 돌리지 않고 화면부터 연다 — 결과를 볼 곳이 있어야 누른 보람이
+            // 있다. 실제 분석은 AnalysisView 안의 버튼이 onRegen으로 돌린다.
+            <button className="btn" onClick={() => setAnalysisOpen(true)}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M2 8a6 6 0 1 0 1.5-4" strokeLinecap="round" />
                 <polyline points="1 4 2 8 6 7" strokeLinecap="round" strokeLinejoin="round" />
@@ -207,6 +192,15 @@ export default function AppShell({
               다시 정리
             </button>
           )}
+          <button
+            type="button"
+            className="notion-chip"
+            onClick={() => setPanelCollapsed(false)}
+            title="저장 상태 자세히 보기"
+          >
+            <span className="ico">{chip.ico}</span>
+            {chip.label}
+          </button>
           <button className="icon-btn" title="내보내기" onClick={onExport}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M8 2v8M5 7l3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
@@ -228,115 +222,86 @@ export default function AppShell({
         onPickFolder={onPickFolder}
       />
 
-      {/* Main area: transcript + note doc */}
-      <div style={{ display: "flex", overflow: "hidden", position: "relative" }}>
-        {mode === "review" && (() => {
-          const { ico, text } = bannerText(notionStatus);
-          // 저장에 성공한 뒤에도 다시 보낼 수 있어야 한다. 제목·참석자를 고친 뒤 이 버튼이
-          // 없으면, 다시 녹음하기 전까지 Notion 페이지는 낡은 값을 그대로 달고 있는다.
-          // (이어 붙일 발화가 없으므로 이 재전송은 속성만 갱신한다.)
-          const canResend = notionStatus.kind === "saved" && !!notionStatus.pageId;
-          const canRetry =
-            notionStatus.kind === "failed" || notionStatus.kind === "partial" || canResend;
-          return (
-            <div className="review-banner" style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}>
-              <span className="ico">{ico}</span>
-              {text}
-              <div className="actions">
-                <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
-                {canRetry && (
-                  <button className="btn" onClick={onRetryNotion}>
-                    {canResend ? "Notion 갱신" : "다시 시도"}
-                  </button>
-                )}
-                {notionStatus.kind === "unconfigured" && (
-                  <button className="btn" onClick={onSettings}>설정</button>
-                )}
-                <button className="btn" onClick={onExport}>내보내기</button>
-                <button className="btn btn-primary" onClick={onSave}>저장</button>
-              </div>
-            </div>
-          );
-        })()}
+      {/* Main area: 트랜스크립트가 주인공, 오른쪽에 정보 패널 */}
+      <div className="main-area">
+        <div className="main-row">
+          {/* 트랜스크립트 — 남는 폭 전부 */}
+          <div className="transcript-col">
+            {transcriptSlot ?? (
+              <LiveTranscript
+                turns={turns}
+                keywords={keywords}
+                participants={participants}
+                mode={mode}
+                isRecording={isRecordingThisNote}
+                elapsedMs={elapsedMs}
+                sttError={sttError}
+                onToggleRecording={onToggleRecording}
+                onSpeakerName={onSpeakerName}
+                onToggleKeyword={onToggleKeyword}
+                onEditTurn={onEditTurn}
+                onSplitTurn={onSplitTurn}
+              />
+            )}
+          </div>
 
-        {/* 트랜스크립트 패널 */}
-        <div style={{
-          width: transcriptCollapsed ? 0 : 380,
-          overflow: "hidden",
-          transition: "width 0.2s ease",
-          flexShrink: 0,
-        }}>
-          {transcriptSlot ?? (
-            <LiveTranscript
-              turns={turns}
-              keywords={keywords}
+          {/* 오른쪽 패널 접기/펼치기 핸들 */}
+          <button
+            className="panel-handle"
+            onClick={() => setPanelCollapsed((c) => !c)}
+            title={panelCollapsed ? "정보 패널 펼치기" : "정보 패널 접기"}
+          >
+            <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              {panelCollapsed
+                ? <polyline points="6,2 2,6 6,10" />
+                : <polyline points="2,2 6,6 2,10" />
+              }
+            </svg>
+          </button>
+
+          {/* 오른쪽 패널 — 폭은 접힘 상태에서 계산되므로 인라인으로 둔다 */}
+          <div
+            className={panelCollapsed ? "side-panel collapsed" : "side-panel"}
+            style={{ width: panelCollapsed ? 0 : 320 }}
+          >
+            <MeetingInfoPanel
+              note={currentNote}
               participants={participants}
-              mode={mode}
-              isRecording={isRecordingThisNote}
-              elapsedMs={elapsedMs}
-              sttError={sttError}
-              onToggleRecording={onToggleRecording}
-              onSpeakerName={onSpeakerName}
-              onToggleKeyword={onToggleKeyword}
-              onEditTurn={onEditTurn}
-              onSplitTurn={onSplitTurn}
-              reviewOffset={mode === "review" ? 44 : 0}
+              onUpdateNote={onUpdateNote}
             />
-          )}
+            <NotionStatusPanel
+              status={notionStatus}
+              notionPageId={currentNote?.notionPageId}
+              syncedTurns={currentNote?.notionSyncedTurns}
+              totalTurns={currentNote?.segments.length ?? 0}
+              onRetry={onRetryNotion}
+              onSettings={onSettings}
+              onOpenAnalysis={() => setAnalysisOpen(true)}
+              analyzing={analyzing}
+            />
+          </div>
         </div>
 
-        {/* 트랜스크립트 접기/펼치기 핸들 */}
-        <button
-          onClick={() => setTranscriptCollapsed((c) => !c)}
-          title={transcriptCollapsed ? "트랜스크립트 펼치기" : "트랜스크립트 접기"}
-          style={{
-            flexShrink: 0,
-            width: 16,
-            alignSelf: "stretch",
-            background: "var(--surface-2)",
-            border: "none",
-            borderLeft: "1px solid var(--border)",
-            borderRight: "1px solid var(--border)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--ink-4)",
-            padding: 0,
-            transition: "background 0.15s",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-3)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-        >
-          <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            {transcriptCollapsed
-              ? <><polyline points="2,2 6,6 2,10" /></>
-              : <><polyline points="6,2 2,6 6,10" /></>
-            }
-          </svg>
-        </button>
-
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            paddingTop: mode === "review" ? 44 : 0,
-          }}
-        >
-          <NoteDocument
-            note={currentNote}
-            mode={mode}
-            participants={participants}
-            pendingTurnCount={pendingTurnCount}
-            onRegen={onRegen}
-            onUpdateNote={onUpdateNote}
-            analyzing={analyzing}
-          />
-        </div>
+        <ActionBar
+          mode={mode}
+          elapsedMs={elapsedMs}
+          isRecording={isRecordingThisNote}
+          onToggleRecording={onToggleRecording}
+          onExport={onExport}
+          onSave={onSave}
+        />
       </div>
+
+      {analysisOpen && (
+        <AnalysisView
+          note={currentNote}
+          pendingTurnCount={pendingTurnCount}
+          analyzing={analyzing}
+          onRegen={onRegen}
+          onUpdateNote={onUpdateNote}
+          onClose={() => setAnalysisOpen(false)}
+        />
+      )}
 
       {modelStatus !== "ready" && (
         <ModelLoadingOverlay status={modelStatus} progress={modelProgress} />

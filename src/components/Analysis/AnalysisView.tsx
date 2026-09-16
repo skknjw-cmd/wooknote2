@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import type { NoteRecord, Participant, DiscussionItem } from "@/types/meeting";
+import type { NoteRecord, DiscussionItem } from "@/types/meeting";
 
 // context 텍스트("제목: 배경: ...\n논의: ...\n결론: ...") → DiscussionItem[]
 function parseContextToDiscussions(context: string): DiscussionItem[] {
@@ -189,7 +189,6 @@ function ActionDraftRow({
 
 export interface AnalysisViewProps {
   note: NoteRecord | null;
-  participants: Participant[];
   pendingTurnCount?: number;
   analyzing?: boolean;
   onRegen?: () => void;
@@ -201,12 +200,11 @@ export interface AnalysisViewProps {
  * AI 분석 결과를 전체 화면으로 띄운다.
  *
  * 기본 화면에 두지 않는 이유: 회의가 끝나도 분석은 자동으로 돌지 않는다. 늘 띄워 두면
- * "요약이 없습니다"가 화면 대부분을 차지한다. 여기 블록들은 NoteDocument에서 그대로
- * 옮겨 온 것이라 편집 동작(contentEditable · 할 일 추가 · 체크박스)이 예전과 같다.
+ * "요약이 없습니다"가 화면 대부분을 차지한다. 여기 블록들은 이제 삭제된 NoteDocument에서
+ * 그대로 옮겨 온 것이라 편집 동작(contentEditable · 할 일 추가 · 체크박스)이 예전과 같다.
  */
 export default function AnalysisView({
   note,
-  participants,
   pendingTurnCount = 0,
   analyzing = false,
   onRegen,
