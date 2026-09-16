@@ -56,26 +56,6 @@ export type MeetingInfo = {
   attendees: string;
 };
 
-/**
- * Full snapshot stored in localStorage["last_meeting_result"].
- * Always writes schemaVersion: 2. A loader migrates v1 on read.
- */
-export type SavedMeetingResultV2 = {
-  schemaVersion: 2;
-  analysis: AnalysisResult;
-  segments: Segment[];
-  mapping: SpeakerMapping;
-  meetingInfo: MeetingInfo;
-  selectedOptions: string[];
-  generatedAt: string; // ISO
-  expiresAt: string; // ISO, generatedAt + 30 days
-};
-
-/** Legacy shape (pure AnalysisResult dumped directly). */
-export type SavedMeetingResultV1 = AnalysisResult;
-
-export type SavedMeetingResult = SavedMeetingResultV2 | SavedMeetingResultV1;
-
 /** Input state carried by the main page form. */
 export type InputData = {
   type: "text" | "file" | "record";
