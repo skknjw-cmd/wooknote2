@@ -186,7 +186,9 @@ function resolveChoice(
       ? { value: { status: { name: optionName } } }
       : { reason: `status 옵션 "${optionName}" 없음` };
   }
-  return { reason: "" };
+  // 값 속성 쪽과 같은 이유로 여기서도 사유를 버리지 않는다. 속성이 아예 없는 것과
+  // 타입이 맞지 않는 것은 사용자가 할 일이 다르다.
+  return { reason: prop === undefined ? "없는 속성" : "select/status 아님" };
 }
 
 /**
@@ -266,11 +268,15 @@ export function filterProperties(
     if (prop === undefined) {
       // 속성이 아예 없는 것과 타입이 다른 것은 사용자가 할 일이 다르다.
       // 둘을 뭉뚱그리면 "그 속성은 date가 아니다"라는 거짓을 말하게 된다.
-      skipped.push(skipLabel(plan.name, m ? target : null, m ? "없는 속성" : ""));
+      //
+      // 매핑이 없을 때도 사유를 붙인다. 예전에는 이름만 내보내서, 사용자는 "상태"라는
+      // 한 단어만 보고 속성이 없는 건지 타입이 틀린 건지 알 수 없었다 — 이 스키마를
+      // 방금 읽어 보고 이유를 아는 쪽은 여기인데도.
+      skipped.push(skipLabel(plan.name, m ? target : null, "없는 속성"));
       continue;
     }
     if (prop.type !== plan.type) {
-      skipped.push(skipLabel(plan.name, m ? target : null, m ? `${plan.type} 아님` : ""));
+      skipped.push(skipLabel(plan.name, m ? target : null, `${plan.type} 아님`));
       continue;
     }
     if (target in properties) {

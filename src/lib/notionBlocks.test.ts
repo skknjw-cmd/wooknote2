@@ -205,20 +205,25 @@ describe("filterProperties", () => {
   it("title 속성은 이름이 아니라 타입으로 찾는다", () => {
     const { properties, skipped } = filterProperties({ Name: { type: "title" } }, payload);
     expect(properties["Name"]).toEqual({ title: [{ text: { content: "주간 회의" } }] });
-    expect(skipped).toEqual(["회의일시", "참석자", "소요시간", "상태", "입력방식"]);
+    expect(skipped).toEqual([
+      "회의일시(없는 속성)", "참석자(없는 속성)", "소요시간(없는 속성)",
+      "상태(없는 속성)", "입력방식(없는 속성)",
+    ]);
   });
 
   it("없는 속성은 제외하고 skipped에 담는다", () => {
     const schema = { 이름: { type: "title" }, 회의일시: { type: "date" } };
     const { properties, skipped } = filterProperties(schema, payload);
     expect(Object.keys(properties).sort()).toEqual(["이름", "회의일시"]);
-    expect(skipped).toEqual(["참석자", "소요시간", "상태", "입력방식"]);
+    expect(skipped).toEqual([
+      "참석자(없는 속성)", "소요시간(없는 속성)", "상태(없는 속성)", "입력방식(없는 속성)",
+    ]);
   });
 
   it("타입이 다르면 제외하고 skipped에 담는다", () => {
     const schema = { ...fullSchema, 회의일시: { type: "rich_text" } };
     const { skipped } = filterProperties(schema, payload);
-    expect(skipped).toContain("회의일시");
+    expect(skipped).toContain("회의일시(date 아님)");
   });
 
   it("값이 빈 항목은 속성이 있어도 채우지 않고 skipped에도 넣지 않는다", () => {
@@ -602,7 +607,7 @@ describe("filterProperties — only", () => {
   it("only에 든 필드가 스키마에 없으면 이유와 함께 skipped", () => {
     const { properties, skipped } = filterProperties({ 이름: { type: "title" } }, payload, null, ["durationText"]);
     expect(properties["소요시간"]).toBeUndefined();
-    expect(skipped).toEqual(["소요시간"]);
+    expect(skipped).toEqual(["소요시간(없는 속성)"]);
   });
 
   it('only에 "title"을 넣으면 제목도 채운다', () => {
@@ -622,6 +627,15 @@ describe("filterProperties — only", () => {
     const { properties, skipped } = filterProperties({ 참석자: { type: "rich_text" } }, payload, null, ["title"]);
     expect(properties["이름"]).toBeUndefined();
     expect(skipped).toEqual(["이름(title)"]);
+  });
+
+  it("매핑이 없어도 왜 건너뛰었는지 말한다", () => {
+    // 예전에는 매핑이 있을 때만 사유를 붙여, 사용자가 '상태'만 보고 무엇을 해야 할지
+    // 알 수 없었다. 속성이 없는 것과 타입이 다른 것은 할 일이 다르므로 늘 구분해 말한다.
+    const schema = { 이름: { type: "title" }, 상태: { type: "rich_text" } };
+    const { skipped } = filterProperties(schema, payload);
+    expect(skipped).toContain("상태(select/status 아님)");
+    expect(skipped).toContain("회의일시(없는 속성)");
   });
 
   it('only에 "title"이 없으면 title 속성이 없어도 skipped에 남기지 않는다', () => {

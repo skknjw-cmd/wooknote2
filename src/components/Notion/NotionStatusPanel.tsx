@@ -31,8 +31,9 @@ function bannerText(status: NotionSaveState, notionPageId?: string): { ico: stri
       // "아직 저장되지 않았다"는 같은 사실을 말해야 하므로 Notion만 집어 말하지 않는다.
       return { ico: "⏳", text: <span><b>저장 중…</b> 마지막 음성을 처리하고 저장하는 중입니다.</span> };
     case "saved": {
+      // 건너뛴 속성은 여기 나열하지 않는다. 바로 아래 .n-skipped 목록이 같은 내용을
+      // 이미 보여 주고, 사유가 붙은 뒤로는 같은 긴 문장이 두 번 나와 읽기 어려웠다.
       const parts: string[] = [];
-      if (status.skippedProperties.length > 0) parts.push(`건너뛴 속성: ${status.skippedProperties.join(", ")}`);
       if (status.mappingIgnored) parts.push("매핑이 다른 데이터베이스의 것이라 무시했습니다 — 설정에서 다시 연결 테스트를 해주세요");
       // 이어 붙였는지 새로 만들었는지는 사용자가 Notion에서 무엇을 보게 될지를 바꾼다.
       // 페이지를 다시 만든 경우는 특히 알려야 한다 — 앞의 회의록이 사라졌다는 뜻이다.
@@ -110,11 +111,18 @@ export default function NotionStatusPanel({
       </div>
 
       {skippedProperties.length > 0 && (
+        <>
         <ul className="n-skipped">
           {skippedProperties.map((prop) => (
             <li key={prop}>{prop}</li>
           ))}
         </ul>
+        {/* 목록만 보여 주면 사용자는 "상태(없는 속성)"까지 읽고도 무엇을 해야 할지 모른다.
+            건너뛴 이유가 이름 불일치인 경우가 대부분이고, 고치는 곳은 매핑 한 군데다. */}
+        <button className="n-hint" onClick={onSettings}>
+          설정 → 연결 테스트에서 실제 속성에 연결하세요 ↗
+        </button>
+        </>
       )}
 
       {url && (
