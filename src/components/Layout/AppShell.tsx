@@ -55,17 +55,31 @@ function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNo
       const parts: string[] = [];
       if (status.skippedProperties.length > 0) parts.push(`건너뛴 속성: ${status.skippedProperties.join(", ")}`);
       if (status.mappingIgnored) parts.push("매핑이 다른 데이터베이스의 것이라 무시했습니다 — 설정에서 다시 연결 테스트를 해주세요");
+      // 이어 붙였는지 새로 만들었는지는 사용자가 Notion에서 무엇을 보게 될지를 바꾼다.
+      // 페이지를 다시 만든 경우는 특히 알려야 한다 — 앞의 회의록이 사라졌다는 뜻이다.
+      const where = status.pageRecreated
+        ? "기존 페이지를 찾을 수 없어 새 페이지로 저장됨"
+        : status.appended
+          ? "기존 Notion 페이지에 이어 붙임"
+          : "Notion에 기록됨";
       return {
-        ico: "✅",
+        ico: status.pageRecreated ? "⚠️" : "✅",
         text: parts.length > 0
-          ? <span><b>저장 완료</b> · Notion에 기록됨 ({parts.join(" / ")})</span>
-          : <span><b>저장 완료</b> · Notion에 기록됨</span>,
+          ? <span><b>저장 완료</b> · {where} ({parts.join(" / ")})</span>
+          : <span><b>저장 완료</b> · {where}</span>,
       };
     }
     case "partial":
       return {
         ico: "⚠️",
-        text: <span><b>일부만 저장됨</b> ({status.savedBlocks}/{status.totalBlocks} 블록) · 다시 시도하면 새 페이지가 만들어집니다.</span>,
+        text: (
+          <span>
+            <b>일부만 저장됨</b> ({status.savedBlocks}/{status.totalBlocks} 블록) ·{" "}
+            {status.appended
+              ? "다시 시도하면 이미 올라간 부분이 중복될 수 있습니다."
+              : "다시 시도하면 새 페이지가 만들어집니다."}
+          </span>
+        ),
       };
     case "unconfigured":
       return { ico: "💾", text: <span><b>로컬에 저장됨</b> · Notion 미설정</span> };

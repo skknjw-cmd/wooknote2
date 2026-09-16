@@ -78,6 +78,15 @@ export function noteToNotionPayload(note: NoteRecord): NotionMeetingPayload {
 }
 
 /**
+ * 이 노트가 이미 만든 Notion 페이지를 가리키는 좌표. 없으면 새로 만든다는 뜻이다.
+ * 발화 수로 세는 이유는 NoteRecord.notionSyncedTurns 주석 참고.
+ */
+function notionTarget(note: NoteRecord): { pageId: string; fromTurn: number } | null {
+  if (!note.notionPageId) return null;
+  return { pageId: note.notionPageId, fromTurn: note.notionSyncedTurns ?? 0 };
+}
+
+/**
  * 노트를 Notion에 저장하고 표시용 상태를 돌려준다. 예외를 던지지 않는다 —
  * 호출자는 이 결과를 배너에 그대로 쓰면 된다.
  */
@@ -91,6 +100,7 @@ export async function pushToNotion(note: NoteRecord): Promise<NotionSaveState> {
       body: JSON.stringify({
         meeting: noteToNotionPayload(note),
         mapping: getNotionMapping(),
+        target: notionTarget(note),
       }),
     });
 
@@ -113,10 +123,21 @@ export async function pushToNotion(note: NoteRecord): Promise<NotionSaveState> {
         kind: "saved",
         skippedProperties: data.skippedProperties,
         mappingIgnored: data.mappingIgnored,
+        appended: data.appended,
+        pageRecreated: data.pageRecreated,
+        pageId: data.pageId,
+        syncedTurns: data.syncedTurns,
       };
     }
     if (data.stage === "append") {
-      return { kind: "partial", savedBlocks: data.savedBlocks, totalBlocks: data.totalBlocks };
+      // 여기서는 pageId를 노트에 적지 않는다. 어디까지 붙었는지 블록 단위로만 알 수 있어
+      // 발화 수를 정확히 옮길 수 없고, 어긋난 숫자로 이어 붙이면 회의록이 어긋난다.
+      return {
+        kind: "partial",
+        savedBlocks: data.savedBlocks,
+        totalBlocks: data.totalBlocks,
+        appended: !!note.notionPageId,
+      };
     }
     return {
       kind: "failed",
