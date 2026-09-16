@@ -367,7 +367,9 @@ export default function NoteDocument({
             if (!note) return;
             const next = (e.currentTarget.textContent ?? "").trim();
             // 빈 제목으로 지워버리면 Notion 페이지 제목이 사라진다. 비우면 원래대로 둔다.
-            if (!next) {
+            // 바뀐 게 없을 때(공백만 추가/삭제한 경우 포함)도 그대로 반환해, 아무것도
+            // 고치지 않았는데 IndexedDB·.md 저장이 도는 것을 막는다 — 헤더의 title-input과 동일.
+            if (!next || next === note.title) {
               e.currentTarget.textContent = note.title;
               return;
             }
