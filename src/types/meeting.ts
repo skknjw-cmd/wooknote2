@@ -1,27 +1,5 @@
 // src/types/meeting.ts
 
-/**
- * One utterance unit. Clova segment + frontend-assigned stable ID.
- * originalSpeaker is namespaced ("${sequenceId}:${clovaLabel}") so the
- * same Clova label in different 2-minute chunks doesn't collide.
- */
-export type Segment = {
-  id: string; // "seg_000001" monotonic counter
-  sequenceId: number; // recording chunk order
-  originalSpeaker: string; // e.g. "1:1", "2:1" — group key; may be rewritten by auto-merge
-  rawClovaKey?: string; // immutable "${sequenceId}:${clovaLabel}" for undo of auto-merge
-  text: string;
-  start?: number; // cumulative ms from recording start
-  end?: number;
-  speakerOverride?: string; // per-segment override, wins over mapping
-};
-
-/**
- * originalSpeaker (namespaced) -> real name.
- * Empty-string values are stripped on save (treated as "no mapping").
- */
-export type SpeakerMapping = Record<string, string>;
-
 export type AnalysisSectionNumbered = {
   name: string;
   type: "numbered";
@@ -47,21 +25,6 @@ export type AnalysisResult = {
   date: string;
   attendees: string[];
   sections: AnalysisSection[];
-};
-
-export type MeetingInfo = {
-  title: string;
-  date: string;
-  location: string;
-  attendees: string;
-};
-
-/** Input state carried by the main page form. */
-export type InputData = {
-  type: "text" | "file" | "record";
-  content: string | File | Blob | null;
-  segments?: Segment[];
-  mapping?: SpeakerMapping;
 };
 
 // ── V2 types ──
