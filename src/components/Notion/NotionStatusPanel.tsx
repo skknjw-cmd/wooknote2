@@ -1,0 +1,138 @@
+"use client";
+
+import React from "react";
+import type { NotionSaveState } from "@/types/meeting";
+import { notionPageUrl } from "@/lib/notionPageUrl";
+
+export interface NotionStatusPanelProps {
+  status: NotionSaveState;
+  notionPageId?: string;
+  syncedTurns?: number;
+  totalTurns: number;
+  onRetry?: () => void;
+  onSettings?: () => void;
+  onOpenAnalysis: () => void;
+  analyzing?: boolean;
+}
+
+/**
+ * 저장 상태를 배너 문구와 아이콘으로 옮긴다.
+ *
+ * src/components/Layout/AppShell.tsx의 bannerText를 그대로 복사했다 — 문구를
+ * 새로 지어내면 이전 단계에서 맞춰 놓은 사실관계(재생성/무시된 매핑/부분 저장 시
+ * 재시도가 중복을 만든다는 점)가 다시 갈라진다. AppShell은 이 작업에서 건드리지
+ * 않으므로 지금은 중복이지만, 배선은 다음 커밋에서 정리한다.
+ */
+function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNode } {
+  switch (status.kind) {
+    case "saving":
+      // 중지 직후의 마지막 음성 처리와 그 뒤의 저장을 한 문구로 덮는다. 두 단계 모두
+      // "아직 저장되지 않았다"는 같은 사실을 말해야 하므로 Notion만 집어 말하지 않는다.
+      return { ico: "⏳", text: <span><b>저장 중…</b> 마지막 음성을 처리하고 저장하는 중입니다.</span> };
+    case "saved": {
+      const parts: string[] = [];
+      if (status.skippedProperties.length > 0) parts.push(`건너뛴 속성: ${status.skippedProperties.join(", ")}`);
+      if (status.mappingIgnored) parts.push("매핑이 다른 데이터베이스의 것이라 무시했습니다 — 설정에서 다시 연결 테스트를 해주세요");
+      // 이어 붙였는지 새로 만들었는지는 사용자가 Notion에서 무엇을 보게 될지를 바꾼다.
+      // 페이지를 다시 만든 경우는 특히 알려야 한다 — 앞의 회의록이 사라졌다는 뜻이다.
+      const where = status.pageRecreated
+        ? "기존 페이지를 찾을 수 없어 새 페이지로 저장됨"
+        : status.appended
+          ? "기존 Notion 페이지에 이어 붙임"
+          : "Notion에 기록됨";
+      return {
+        ico: status.pageRecreated ? "⚠️" : "✅",
+        text: parts.length > 0
+          ? <span><b>저장 완료</b> · {where} ({parts.join(" / ")})</span>
+          : <span><b>저장 완료</b> · {where}</span>,
+      };
+    }
+    case "partial":
+      return {
+        ico: "⚠️",
+        text: (
+          <span>
+            <b>일부만 저장됨</b> ({status.savedBlocks}/{status.totalBlocks} 블록) ·{" "}
+            {status.appended
+              ? "다시 시도하면 이미 올라간 부분이 중복될 수 있습니다."
+              : "다시 시도하면 새 페이지가 만들어집니다."}
+          </span>
+        ),
+      };
+    case "unconfigured":
+      return { ico: "💾", text: <span><b>로컬에 저장됨</b> · Notion 미설정</span> };
+    case "failed":
+      return { ico: "❌", text: <span><b>Notion 저장 실패</b> · 로컬에는 저장됨 — {status.message}</span> };
+    // 로컬(IndexedDB) 저장 자체가 실패해 이 회의는 어디에도 저장되지 않은 상태.
+    // "저장됨"류 표현을 절대 쓰지 않는다 — 위험을 숨기면 안 된다.
+    case "localFailed":
+      return { ico: "❌", text: <span><b>저장 실패</b> — {status.message}</span> };
+    default:
+      return { ico: "⏺", text: <span><b>녹음이 종료되었습니다.</b></span> };
+  }
+}
+
+export default function NotionStatusPanel({
+  status,
+  notionPageId,
+  syncedTurns,
+  totalTurns,
+  onRetry,
+  onSettings,
+  onOpenAnalysis,
+  analyzing = false,
+}: NotionStatusPanelProps) {
+  const { ico, text } = bannerText(status);
+
+  // AppShell의 review-banner와 똑같은 조건 — 저장에 성공한 뒤에도 다시 보낼 수
+  // 있어야 하고(제목·참석자를 고친 뒤 재전송), 실패·부분 저장은 재시도 대상이다.
+  const canResend = status.kind === "saved" && !!status.pageId;
+  const canRetry = status.kind === "failed" || status.kind === "partial" || canResend;
+
+  const skippedProperties = status.kind === "saved" ? status.skippedProperties : [];
+  const url = notionPageUrl(notionPageId);
+
+  return (
+    <div className="notion-panel">
+      <div className="n-row">
+        <span className="n-ico">{ico}</span>
+        <div className="n-text">{text}</div>
+      </div>
+
+      {skippedProperties.length > 0 && (
+        <ul className="n-skipped">
+          {skippedProperties.map((prop) => (
+            <li key={prop}>{prop}</li>
+          ))}
+        </ul>
+      )}
+
+      {url && (
+        <a className="n-link" href={url} target="_blank" rel="noopener noreferrer">
+          Notion에서 열기 ↗
+        </a>
+      )}
+
+      {syncedTurns !== undefined && (
+        <div className="n-synced">발화 {syncedTurns}/{totalTurns} 동기화</div>
+      )}
+
+      <div className="n-actions">
+        {canRetry && (
+          <button className="btn" onClick={onRetry}>
+            {canResend ? "Notion 갱신" : "다시 시도"}
+          </button>
+        )}
+        {status.kind === "unconfigured" && (
+          <button className="btn" onClick={onSettings}>설정</button>
+        )}
+      </div>
+
+      <div className="n-footer">
+        <button className="btn" onClick={onOpenAnalysis} disabled={analyzing}>
+          다시 정리
+        </button>
+      </div>
+    </div>
+  );
+}
