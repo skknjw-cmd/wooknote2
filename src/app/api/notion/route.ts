@@ -7,7 +7,7 @@ import {
   type NotionPropertySchema,
 } from "@/lib/notionBlocks";
 import { resolveDataSource } from "@/lib/notionResolve";
-import type { NotionMeetingPayload, NotionSaveResponse } from "@/types/meeting";
+import type { NotionMeetingPayload, NotionMappingConfig, NotionSaveResponse } from "@/types/meeting";
 
 export const maxDuration = 120;
 
@@ -45,7 +45,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const payload = (await req.json()) as NotionMeetingPayload;
+  const body = (await req.json()) as {
+    meeting: NotionMeetingPayload;
+    mapping?: NotionMappingConfig | null;
+  };
+  const payload = body.meeting;
+  const mapping = body.mapping ?? null;
   const notion = new Client({ auth: token, notionVersion: NOTION_VERSION });
 
   // 1. 입력값을 데이터 소스로 해석한다.
@@ -61,6 +66,11 @@ export async function POST(req: NextRequest) {
   }
   const { dataSourceId, dataSourceName } = resolved;
 
+  // 매핑이 다른 data source의 것이면 쓰지 않는다. 속성 이름이 우연히 겹치면
+  // 엉뚱한 곳에 값이 들어가고, 사용자는 왜 그런지 알 수 없다.
+  const mappingUsable = !!mapping && mapping.dataSourceId === dataSourceId;
+  const mappingIgnored = !!mapping && !mappingUsable;
+
   // 2. 속성 스키마 → 실재하는 속성만 채움
   let properties: Record<string, unknown>;
   let skippedProperties: string[];
@@ -68,7 +78,7 @@ export async function POST(req: NextRequest) {
     const schema: NotionPropertySchema =
       resolved.schema ??
       (await notion.dataSources.retrieve({ data_source_id: dataSourceId })).properties;
-    const filtered = filterProperties(schema, payload);
+    const filtered = filterProperties(schema, payload, mappingUsable ? mapping.fields : null);
     properties = filtered.properties;
     skippedProperties = filtered.skipped;
   } catch (err) {
@@ -124,5 +134,6 @@ export async function POST(req: NextRequest) {
     totalBlocks,
     skippedProperties,
     dataSourceName,
+    mappingIgnored,
   });
 }
