@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { noteToNotionPayload } from "./notionSave";
+import { noteToNotionPayload, toIsoDate } from "./notionSave";
 import type { NoteRecord } from "@/types/meeting";
 
 const baseNote: NoteRecord = {
@@ -95,5 +95,77 @@ describe("noteToNotionPayload", () => {
     const { entryMethod, ...rest } = baseNote;
     void entryMethod;
     expect(noteToNotionPayload(rest as NoteRecord).entryMethod).toBe("live");
+  });
+});
+
+describe("toIsoDate", () => {
+  it("YYYY-MM-DD는 그대로 둔다", () => {
+    expect(toIsoDate("2026-09-16")).toBe("2026-09-16");
+  });
+
+  it("점·슬래시 구분자를 받는다", () => {
+    expect(toIsoDate("2026.09.16")).toBe("2026-09-16");
+    expect(toIsoDate("2026/09/16")).toBe("2026-09-16");
+  });
+
+  it("한 자리 월·일을 0으로 채운다", () => {
+    expect(toIsoDate("2026-9-6")).toBe("2026-09-06");
+  });
+
+  it("뒤에 시각이 붙어도 날짜만 뽑는다", () => {
+    expect(toIsoDate("2026-09-16 14:30")).toBe("2026-09-16");
+    expect(toIsoDate("2026.09.16 오후 3:21")).toBe("2026-09-16");
+  });
+
+  it("앞뒤 공백을 무시한다", () => {
+    expect(toIsoDate("  2026-09-16  ")).toBe("2026-09-16");
+  });
+
+  it("해석할 수 없으면 null", () => {
+    expect(toIsoDate("다음 주 화요일")).toBeNull();
+    expect(toIsoDate("")).toBeNull();
+    expect(toIsoDate(undefined)).toBeNull();
+  });
+
+  it("달력에 없는 날짜는 null", () => {
+    expect(toIsoDate("2026-13-01")).toBeNull();
+    expect(toIsoDate("2026-02-30")).toBeNull();
+  });
+});
+
+describe("noteToNotionPayload — 참석자 우선순위", () => {
+  const base = {
+    id: "n1", title: "회의", createdAt: Date.parse("2026-09-16T10:00:00"),
+    segments: [], speakerMapping: {}, audioDuration: 0, keywords: [], memo: "",
+    summaryBullets: [], actions: [], decisions: [], questions: [], nextAgenda: [], context: "",
+  };
+  const people = [
+    { sp: 1, name: "김지훈", role: "", initials: "김" },
+    { sp: 2, name: "이수민", role: "", initials: "이" },
+  ];
+
+  it("패널에 직접 입력한 참석자가 화자 이름을 이긴다", () => {
+    const p = noteToNotionPayload({ ...base, participants: people, attendees: "박도현, 최유진" } as never);
+    expect(p.attendees).toEqual(["박도현", "최유진"]);
+  });
+
+  it("직접 입력이 없으면 화자 이름을 쓴다", () => {
+    const p = noteToNotionPayload({ ...base, participants: people } as never);
+    expect(p.attendees).toEqual(["김지훈", "이수민"]);
+  });
+
+  it("직접 입력이 공백뿐이면 화자 이름으로 되돌아간다", () => {
+    const p = noteToNotionPayload({ ...base, participants: people, attendees: "  ,  " } as never);
+    expect(p.attendees).toEqual(["김지훈", "이수민"]);
+  });
+
+  it("사용자가 적은 회의 일시가 반영된다", () => {
+    const p = noteToNotionPayload({ ...base, participants: [], meetingDate: "2026.10.02" } as never);
+    expect(p.meetingDate).toBe("2026-10-02");
+  });
+
+  it("해석할 수 없는 회의 일시는 생성일로 되돌아간다", () => {
+    const p = noteToNotionPayload({ ...base, participants: [], meetingDate: "다음 주" } as never);
+    expect(p.meetingDate).toBe("2026-09-16");
   });
 });

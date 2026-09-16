@@ -26,6 +26,26 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * 사용자가 적은 회의 일시를 Notion date 속성이 받는 "YYYY-MM-DD"로 옮긴다.
+ * 해석할 수 없으면 null — 호출자가 생성일로 되돌린다.
+ *
+ * 패널은 이 값을 자유 입력으로 받는다. 예전에는 정확히 "YYYY-MM-DD"가 아니면
+ * 통째로 버렸는데, 화면에는 "2026.09.16 오후 3:21" 같은 모양을 보여 주면서
+ * 그렇게 적으면 무시하는 셈이라 사용자가 알 길이 없었다.
+ */
+export function toIsoDate(input?: string): string | null {
+  const m = (input ?? "").trim().match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  const iso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  // 달력에 없는 날짜(2026-02-30 등)를 거른다. Date는 이런 값을 조용히 넘겨 버린다.
+  const probe = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(probe.getTime())) return null;
+  if (probe.getMonth() + 1 !== Number(mo) || probe.getDate() !== Number(d)) return null;
+  return iso;
+}
+
 /** Date → "2026-09-15 14:30 회의" */
 function autoTitle(d: Date): string {
   return `${isoDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())} 회의`;
@@ -44,21 +64,22 @@ function speakerName(note: NoteRecord, sp: number): string {
 export function noteToNotionPayload(note: NoteRecord): NotionMeetingPayload {
   const created = new Date(note.createdAt);
 
-  const meetingDate = /^\d{4}-\d{2}-\d{2}$/.test(note.meetingDate ?? "")
-    ? note.meetingDate!
-    : isoDate(created);
+  const meetingDate = toIsoDate(note.meetingDate) ?? isoDate(created);
 
   const title = note.title?.trim() && note.title.trim() !== "새 노트"
     ? note.title.trim()
     : autoTitle(created);
 
+  // 패널에 직접 적은 참석자가 화자 이름을 이긴다. 반대로 두면 녹음한 회의에서는
+  // participants가 늘 비어 있지 않아 사용자가 고친 값이 한 번도 나가지 못한다.
+  const typed = (note.attendees ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const attendees =
-    note.participants && note.participants.length > 0
-      ? note.participants.map((p) => p.name?.trim() || `화자 ${p.sp}`)
-      : (note.attendees ?? "")
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
+    typed.length > 0
+      ? typed
+      : (note.participants ?? []).map((p) => p.name?.trim() || `화자 ${p.sp}`);
 
   const turns: NotionTurn[] = (note.segments ?? []).map((seg) => ({
     speaker: speakerName(note, seg.sp),
@@ -83,12 +104,20 @@ export function noteToNotionPayload(note: NoteRecord): NotionMeetingPayload {
  */
 function notionTarget(
   note: NoteRecord,
-): { pageId: string; fromTurn: number; syncedTitle?: string } | null {
+): {
+  pageId: string;
+  fromTurn: number;
+  syncedTitle?: string;
+  syncedDate?: string;
+  syncedAttendees?: string;
+} | null {
   if (!note.notionPageId) return null;
   return {
     pageId: note.notionPageId,
     fromTurn: note.notionSyncedTurns ?? 0,
     syncedTitle: note.notionSyncedTitle,
+    syncedDate: note.notionSyncedDate,
+    syncedAttendees: note.notionSyncedAttendees,
   };
 }
 
@@ -134,6 +163,8 @@ export async function pushToNotion(note: NoteRecord): Promise<NotionSaveState> {
         pageId: data.pageId,
         syncedTurns: data.syncedTurns,
         syncedTitle: data.syncedTitle,
+        syncedDate: data.syncedDate,
+        syncedAttendees: data.syncedAttendees,
       };
     }
     if (data.stage === "append") {

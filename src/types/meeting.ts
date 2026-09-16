@@ -81,6 +81,13 @@ export type NoteRecord = {
    * 매번 덮어쓰면 Notion에서 더 낫게 고쳐 둔 제목이 이어 녹음마다 되돌아간다.
    */
   notionSyncedTitle?: string;
+  /**
+   * 마지막으로 Notion에 보낸 회의일시·참석자. 제목과 같은 규칙으로, 앱의 값이
+   * 이것과 다를 때만 덮어쓴다 — Notion에서 손으로 고친 값이 이어 녹음마다
+   * 되돌아가지 않게 하기 위해서다.
+   */
+  notionSyncedDate?: string;
+  notionSyncedAttendees?: string;
 };
 
 export type TurnSegment = {
@@ -192,6 +199,8 @@ export type NotionSaveResponse =
       /** 이번 저장까지 Notion에 반영된 발화 수. 클라이언트가 노트에 기록한다. */
       syncedTurns?: number;
       syncedTitle?: string;
+      syncedDate?: string;
+      syncedAttendees?: string;
       /** 기존 페이지를 찾지 못해 새로 만들었는가. */
       pageRecreated?: boolean;
     }
@@ -233,6 +242,8 @@ export type NotionSaveState =
       pageId?: string;
       syncedTurns?: number;
       syncedTitle?: string;
+      syncedDate?: string;
+      syncedAttendees?: string;
     }
   /** appended가 참이면 이미 있는 페이지에 일부만 붙은 상태다 — 재시도는 중복을 만든다. */
   | { kind: "partial"; savedBlocks: number; totalBlocks: number; appended?: boolean }
