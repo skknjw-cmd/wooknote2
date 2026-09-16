@@ -490,3 +490,118 @@ describe("filterProperties — 매핑", () => {
     expect(withoutFinal.skipped).toContain("소요시간(→메모: 참석자와 같은 속성)");
   });
 });
+
+// ── 이어 녹음 추가 ──
+// 기존 페이지에 새 발화만 덧붙인다. 기존 블록은 건드리지 않는다 —
+// Claude가 그 페이지에 써넣은 요약·결정사항을 지우면 안 되기 때문이다.
+
+import { buildAppendBlocks } from "./notionBlocks";
+
+const appendPayload: NotionMeetingPayload = {
+  title: "주간 회의",
+  meetingDate: "2026-09-15",
+  location: "3층",
+  attendees: ["김팀장", "이책임"],
+  durationText: "1:23:45",
+  entryMethod: "live",
+  turns: [
+    { speaker: "김팀장", time: "00:12", text: "1차 발언" },
+    { speaker: "이책임", time: "00:31", text: "1차 응답" },
+    { speaker: "김팀장", time: "10:05", text: "2차 발언" },
+  ],
+};
+
+function plainOf(block: { paragraph?: { rich_text: Array<{ text: { content: string } }> } }): string {
+  return (block.paragraph?.rich_text ?? []).map((r) => r.text.content).join("");
+}
+
+describe("buildAppendBlocks", () => {
+  it("fromTurn 이후의 발화만 담는다", () => {
+    const out = buildAppendBlocks(appendPayload, 2);
+    expect(out).toHaveLength(2); // 헤딩 1 + 발화 1
+    expect(plainOf(out[1])).toContain("2차 발언");
+    expect(plainOf(out[1])).not.toContain("1차");
+  });
+
+  it("맨 앞에 이어 녹음 헤딩을 하나만 붙인다", () => {
+    const out = buildAppendBlocks(appendPayload, 2);
+    expect(out[0].type).toBe("heading_2");
+    expect(out[0].heading_2?.rich_text[0].text.content).toBe("트랜스크립트 (이어 녹음)");
+    expect(out.filter((b) => b.type === "heading_2")).toHaveLength(1);
+  });
+
+  it("회의 정보 블록은 붙이지 않는다", () => {
+    const out = buildAppendBlocks(appendPayload, 0);
+    expect(out.some((b) => plainOf(b).startsWith("일시:"))).toBe(false);
+  });
+
+  it("새 발화가 없으면 빈 배열 — 헤딩만 남기지 않는다", () => {
+    expect(buildAppendBlocks(appendPayload, 3)).toEqual([]);
+    expect(buildAppendBlocks(appendPayload, 99)).toEqual([]);
+  });
+
+  it("새 발화가 전부 공백이면 빈 배열", () => {
+    const blank: NotionMeetingPayload = {
+      ...appendPayload,
+      turns: [{ speaker: "김팀장", time: "00:12", text: "   " }],
+    };
+    expect(buildAppendBlocks(blank, 0)).toEqual([]);
+  });
+
+  it("화자 접두와 시각은 buildBlocks와 같은 규칙을 따른다", () => {
+    const out = buildAppendBlocks(appendPayload, 2);
+    expect(out[1].paragraph?.rich_text[0].text.content).toBe("[김팀장]");
+    expect(out[1].paragraph?.rich_text[0].annotations).toEqual({ bold: true });
+    expect(plainOf(out[1])).toBe("[김팀장] 10:05  2차 발언");
+  });
+
+  it("2000자를 넘는 새 발화도 여러 문단으로 나뉜다", () => {
+    const long: NotionMeetingPayload = {
+      ...appendPayload,
+      turns: [{ speaker: "김팀장", time: "00:12", text: "가".repeat(2500) }],
+    };
+    const out = buildAppendBlocks(long, 0);
+    expect(out).toHaveLength(3); // 헤딩 + 문단 2
+    for (const b of out) {
+      for (const rt of b.heading_2?.rich_text ?? b.paragraph?.rich_text ?? []) {
+        expect(rt.text.content.length).toBeLessThanOrEqual(NOTION_TEXT_LIMIT);
+      }
+    }
+  });
+});
+
+describe("filterProperties — only", () => {
+  it("only를 주면 그 필드만 처리하고 제목도 건너뛴다", () => {
+    const { properties, skipped } = filterProperties(fullSchema, payload, null, ["durationText"]);
+    expect(Object.keys(properties)).toEqual(["소요시간"]);
+    expect(skipped).toEqual([]);
+  });
+
+  it("only에 여러 필드를 주면 그만큼만 채운다", () => {
+    const { properties } = filterProperties(fullSchema, payload, null, ["durationText", "attendees", "status"]);
+    expect(Object.keys(properties).sort()).toEqual(["상태", "소요시간", "참석자"].sort());
+    expect(properties["회의일시"]).toBeUndefined();
+    expect(properties["이름"]).toBeUndefined();
+  });
+
+  it("only를 주지 않으면 기존과 동일하게 전부 처리한다", () => {
+    const withOnly = filterProperties(fullSchema, payload, null, undefined);
+    const without = filterProperties(fullSchema, payload);
+    expect(withOnly).toEqual(without);
+  });
+
+  it("only와 매핑을 함께 쓰면 매핑된 이름에 넣는다", () => {
+    const schema = { 이름: { type: "title" }, 길이: { type: "rich_text" } };
+    const { properties } = filterProperties(
+      schema, payload, { durationText: { property: "길이" } }, ["durationText"],
+    );
+    expect(properties["길이"]).toEqual({ rich_text: [{ text: { content: "1:23:45" } }] });
+    expect(properties["이름"]).toBeUndefined();
+  });
+
+  it("only에 든 필드가 스키마에 없으면 이유와 함께 skipped", () => {
+    const { properties, skipped } = filterProperties({ 이름: { type: "title" } }, payload, null, ["durationText"]);
+    expect(properties["소요시간"]).toBeUndefined();
+    expect(skipped).toEqual(["소요시간"]);
+  });
+});

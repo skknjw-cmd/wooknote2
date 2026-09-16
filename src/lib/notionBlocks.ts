@@ -64,18 +64,13 @@ function meetingInfoLine(p: NotionMeetingPayload): string {
 }
 
 /**
- * 페이로드를 Notion 블록 배열로 변환한다.
- * 2000자를 넘는 발화는 여러 문단으로 나뉘며, 화자·시각 접두는 첫 문단에만 붙는다.
+ * 발화 목록을 문단 블록으로 바꾼다. 최초 저장과 이어 녹음 추가가 이 규칙을 공유해,
+ * 두 경로에서 같은 회의가 다른 모양으로 기록되지 않게 한다.
  */
-export function buildBlocks(payload: NotionMeetingPayload): NotionBlock[] {
-  const blocks: NotionBlock[] = [heading("회의 정보")];
+function turnBlocks(turns: NotionMeetingPayload["turns"]): NotionBlock[] {
+  const blocks: NotionBlock[] = [];
 
-  const info = meetingInfoLine(payload);
-  if (info) blocks.push(paragraph([richText(info)]));
-
-  blocks.push(heading("트랜스크립트"));
-
-  for (const turn of payload.turns) {
+  for (const turn of turns) {
     const body = turn.text.trim();
     if (!body) continue;
 
@@ -98,6 +93,36 @@ export function buildBlocks(payload: NotionMeetingPayload): NotionBlock[] {
   }
 
   return blocks;
+}
+
+/**
+ * 페이로드를 Notion 블록 배열로 변환한다. 최초 저장용이다.
+ * 2000자를 넘는 발화는 여러 문단으로 나뉘며, 화자·시각 접두는 첫 문단에만 붙는다.
+ */
+export function buildBlocks(payload: NotionMeetingPayload): NotionBlock[] {
+  const blocks: NotionBlock[] = [heading("회의 정보")];
+
+  const info = meetingInfoLine(payload);
+  if (info) blocks.push(paragraph([richText(info)]));
+
+  blocks.push(heading("트랜스크립트"));
+  blocks.push(...turnBlocks(payload.turns));
+
+  return blocks;
+}
+
+/**
+ * 이어 녹음한 분량만 기존 페이지 뒤에 붙일 블록을 만든다.
+ *
+ * 기존 블록은 절대 건드리지 않는다 — 이 앱은 Claude가 그 페이지를 분석·편집하는 것을
+ * 전제로 하므로, 앞부분을 다시 쓰면 Claude가 써넣은 요약·결정사항이 사라진다.
+ *
+ * 붙일 발화가 없으면 빈 배열을 돌려준다. 내용 없는 헤딩만 남기지 않기 위해서다.
+ */
+export function buildAppendBlocks(payload: NotionMeetingPayload, fromTurn: number): NotionBlock[] {
+  const body = turnBlocks(payload.turns.slice(Math.max(0, fromTurn)));
+  if (body.length === 0) return [];
+  return [heading("트랜스크립트 (이어 녹음)"), ...body];
 }
 
 /** dataSources.retrieve()가 돌려주는 속성 스키마 중 이 코드가 쓰는 부분만. */
@@ -187,6 +212,7 @@ export function filterProperties(
   schema: NotionPropertySchema,
   payload: NotionMeetingPayload,
   fields?: Partial<Record<NotionFieldKey, NotionFieldMapping>> | null,
+  only?: NotionFieldKey[],
 ): { properties: Record<string, unknown>; skipped: string[] } {
   const properties: Record<string, unknown> = {};
   const skipped: string[] = [];
@@ -194,12 +220,17 @@ export function filterProperties(
   // 가리킬 때 나중 필드가 덮어쓰지 않고 이유를 남기게 하려고 기록해 둔다.
   const claimedBy: Record<string, string> = {};
 
-  // title: 타입으로 탐색
-  const titleName = Object.keys(schema).find((k) => schema[k].type === "title");
+  // only를 주면 그 필드만 처리한다. 이어 녹음으로 기존 페이지를 갱신할 때
+  // 소요시간·참석자·상태만 바꾸고 제목·회의일시·입력방식은 그대로 두기 위한 것이다.
+  const wants = (key: NotionFieldKey) => !only || only.includes(key);
+
+  // title: 타입으로 탐색. only를 준 갱신에서는 제목을 건드리지 않는다 —
+  // Claude가 더 나은 제목으로 고쳐 놓았을 수 있다.
+  const titleName = only ? undefined : Object.keys(schema).find((k) => schema[k].type === "title");
   if (titleName) {
     properties[titleName] = { title: [{ text: { content: payload.title } }] };
     claimedBy[titleName] = "이름";
-  } else {
+  } else if (!only) {
     skipped.push("이름(title)");
   }
 
@@ -218,6 +249,7 @@ export function filterProperties(
   ];
 
   for (const plan of valuePlans) {
+    if (!wants(plan.key)) continue; // only에 없는 필드는 이번 갱신 대상이 아니다
     if (plan.value === null) continue; // 값이 없으면 조용히 건너뜀
     const m = fields?.[plan.key];
     if (m && m.property === null) continue; // 일부러 쓰지 않는 필드
@@ -249,6 +281,7 @@ export function filterProperties(
   ];
 
   for (const plan of choicePlans) {
+    if (!wants(plan.key)) continue; // only에 없는 필드는 이번 갱신 대상이 아니다
     const m = fields?.[plan.key];
     if (m && m.property === null) continue; // 일부러 쓰지 않는 필드
     const optionName = m?.option ?? plan.defaultOption;

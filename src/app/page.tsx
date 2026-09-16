@@ -452,7 +452,30 @@ export default function Home() {
     }
 
     setNotionStatus({ kind: "saving" });
-    setNotionStatus(await pushToNotion(note));
+    const state = await pushToNotion(note);
+    rememberNotionPage(note.id, state);
+    setNotionStatus(state);
+  }
+
+  /**
+   * 저장에 성공한 Notion 페이지를 노트에 적어 둔다. 이 값이 있어야 이어 녹음 뒤의
+   * 저장이 새 페이지를 만들지 않고 같은 페이지에 이어 붙는다.
+   *
+   * 저장하는 동안 사용자가 화자명을 고쳤을 수 있으므로 note 객체를 통째로 덮어쓰지 않고
+   * 최신 노트 위에 두 필드만 얹는다(applySegments와 같은 방식).
+   */
+  function rememberNotionPage(noteId: string, state: NotionSaveState) {
+    if (state.kind !== "saved" || !state.pageId) return;
+    const patch = { notionPageId: state.pageId, notionSyncedTurns: state.syncedTurns ?? 0 };
+    setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, ...patch } : n)));
+    setCurrentNote((cur) => (cur && cur.id === noteId ? { ...cur, ...patch } : cur));
+
+    // notes가 아니라 notesRef에서 읽는다. 이 함수는 Notion 왕복(수 초)을 기다린 뒤에
+    // 실행되므로 notes는 이미 옛날 배열이고, 그걸로 쓰면 그 사이의 편집이 지워진다.
+    // 못 찾으면 쓰지 않는다 — 다음 저장이 새 페이지를 만드는 편이 회의록을 되돌리는
+    // 것보다 낫다.
+    const base = notesRef.current.find((n) => n.id === noteId);
+    if (base) dbSave({ ...base, ...patch }).catch(console.error);
   }
 
   async function handleRetryNotion() {
@@ -461,7 +484,9 @@ export default function Home() {
     const note = currentNote;
     if (!note) return;
     setNotionStatus({ kind: "saving" });
-    setNotionStatus(await pushToNotion(note));
+    const state = await pushToNotion(note);
+    rememberNotionPage(note.id, state);
+    setNotionStatus(state);
   }
 
   function handleSave() {

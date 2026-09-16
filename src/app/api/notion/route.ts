@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Client, isHTTPResponseError } from "@notionhq/client";
 import {
+  buildAppendBlocks,
   buildBlocks,
   chunkBlocks,
   filterProperties,
   type NotionPropertySchema,
 } from "@/lib/notionBlocks";
 import { resolveDataSource } from "@/lib/notionResolve";
-import type { NotionMeetingPayload, NotionMappingConfig, NotionSaveResponse } from "@/types/meeting";
+import type {
+  NotionMeetingPayload,
+  NotionMappingConfig,
+  NotionSaveResponse,
+  NotionFieldKey,
+} from "@/types/meeting";
 
 export const maxDuration = 120;
 
@@ -34,6 +40,37 @@ function httpStatus(err: unknown): number {
   return isHTTPResponseError(err) ? err.status : 500;
 }
 
+/** 이어 붙이기에서 갱신할 속성. 제목·회의일시·입력방식은 건드리지 않는다. */
+const APPEND_UPDATE_FIELDS: NotionFieldKey[] = ["durationText", "attendees", "status"];
+
+type CreateResult =
+  | { ok: true; pageId: string }
+  | { ok: false; response: ReturnType<typeof NextResponse.json<NotionSaveResponse>> };
+
+async function createPage(
+  notion: Client,
+  dataSourceId: string,
+  properties: Record<string, unknown>,
+  firstChunk: unknown[],
+): Promise<CreateResult> {
+  try {
+    const page = await notion.pages.create({
+      parent: { data_source_id: dataSourceId },
+      properties: properties as never,
+      children: firstChunk as never,
+    });
+    return { ok: true, pageId: page.id };
+  } catch (err) {
+    return {
+      ok: false,
+      response: NextResponse.json<NotionSaveResponse>(
+        { ok: false, stage: "create", error: `페이지를 만들지 못했습니다. (${errorMessage(err)})` },
+        { status: httpStatus(err) },
+      ),
+    };
+  }
+}
+
 export async function POST(req: NextRequest) {
   const token = req.headers.get("x-notion-token");
   const databaseId = req.headers.get("x-notion-db");
@@ -48,9 +85,12 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as {
     meeting: NotionMeetingPayload;
     mapping?: NotionMappingConfig | null;
+    /** 있으면 새로 만들지 않고 이 페이지에 이어 붙인다. */
+    target?: { pageId: string; fromTurn: number } | null;
   };
   const payload = body.meeting;
   const mapping = body.mapping ?? null;
+  const target = body.target ?? null;
   const notion = new Client({ auth: token, notionVersion: NOTION_VERSION });
 
   // 1. 입력값을 데이터 소스로 해석한다.
@@ -72,43 +112,82 @@ export async function POST(req: NextRequest) {
   const mappingIgnored = !!mapping && !mappingUsable;
 
   // 2. 속성 스키마 → 실재하는 속성만 채움
-  let properties: Record<string, unknown>;
-  let skippedProperties: string[];
+  let schema: NotionPropertySchema;
   try {
-    const schema: NotionPropertySchema =
+    schema =
       resolved.schema ??
       (await notion.dataSources.retrieve({ data_source_id: dataSourceId })).properties;
-    const filtered = filterProperties(schema, payload, mappingUsable ? mapping.fields : null);
-    properties = filtered.properties;
-    skippedProperties = filtered.skipped;
   } catch (err) {
     return NextResponse.json<NotionSaveResponse>(
       { ok: false, stage: "schema", error: `속성 스키마를 읽지 못했습니다. (${errorMessage(err)})` },
       { status: httpStatus(err) },
     );
   }
+  const fields = mappingUsable ? mapping.fields : null;
+
+  // 이어 붙이기일 때는 소요시간·참석자·상태만 갱신한다. 제목·회의일시·입력방식은
+  // 이어 녹음으로 바뀌지 않고, 제목은 Claude가 더 나은 것으로 고쳐 놓았을 수 있다.
+  const filtered = filterProperties(schema, payload, fields, target ? APPEND_UPDATE_FIELDS : undefined);
+  let properties = filtered.properties;
+  let skippedProperties = filtered.skipped;
 
   // 3. 블록 생성 후 첫 100개는 페이지 생성과 함께, 나머지는 append
-  const blocks = buildBlocks(payload);
-  const chunks = chunkBlocks(blocks);
-  const totalBlocks = blocks.length;
+  //    이어 붙이기는 이미 보낸 발화를 빼고 새 발화만 만든다.
+  let chunks = chunkBlocks(target ? buildAppendBlocks(payload, target.fromTurn) : buildBlocks(payload));
+  let totalBlocks = chunks.reduce((n, c) => n + c.length, 0);
 
   let pageId: string;
-  try {
-    const page = await notion.pages.create({
-      parent: { data_source_id: dataSourceId },
-      properties: properties as never,
-      children: (chunks[0] ?? []) as never,
-    });
-    pageId = page.id;
-  } catch (err) {
-    return NextResponse.json<NotionSaveResponse>(
-      { ok: false, stage: "create", error: `페이지를 만들지 못했습니다. (${errorMessage(err)})` },
-      { status: httpStatus(err) },
-    );
+  let appended = false;
+  let pageRecreated = false;
+
+  if (target) {
+    // 기존 페이지에 이어 붙인다. 앞부분은 건드리지 않는다 — Claude가 그 페이지에
+    // 써넣은 요약·결정사항이 사라지면 안 되기 때문이다.
+    try {
+      await notion.pages.update({ page_id: target.pageId, properties: properties as never });
+      pageId = target.pageId;
+      appended = true;
+    } catch (err) {
+      // 사용자가 Notion에서 페이지를 지웠을 수 있다. 여기서 실패로 끝내면 그 노트는
+      // 영원히 저장되지 않으므로, 새 페이지를 만들고 클라이언트에 알린다.
+      if (httpStatus(err) !== 404) {
+        return NextResponse.json<NotionSaveResponse>(
+          { ok: false, stage: "create", error: `기존 페이지를 갱신하지 못했습니다. (${errorMessage(err)})` },
+          { status: httpStatus(err) },
+        );
+      }
+      // 새로 만드는 페이지는 이어 붙일 앞부분이 없다. 회의 전체를 다시 만들고
+      // 속성도 제한 없이 모두 채운다 — 그러지 않으면 제목 없는 반쪽 페이지가 남는다.
+      const full = filterProperties(schema, payload, fields);
+      properties = full.properties;
+      skippedProperties = full.skipped;
+      chunks = chunkBlocks(buildBlocks(payload));
+      totalBlocks = chunks.reduce((n, c) => n + c.length, 0);
+
+      const recreated = await createPage(notion, dataSourceId, properties, chunks[0] ?? []);
+      if (!recreated.ok) return recreated.response;
+      pageId = recreated.pageId;
+      pageRecreated = true;
+    }
+  } else {
+    const created = await createPage(notion, dataSourceId, properties, chunks[0] ?? []);
+    if (!created.ok) return created.response;
+    pageId = created.pageId;
   }
 
-  let savedBlocks = (chunks[0] ?? []).length;
+  // 이어 붙이기는 첫 덩어리도 append로 보낸다(페이지 생성에 실어 보낼 수 없으므로).
+  // 페이지를 새로 만든 경우에는 첫 덩어리가 이미 children으로 들어갔다.
+  let savedBlocks = appended ? 0 : (chunks[0] ?? []).length;
+  if (appended && chunks[0]) {
+    try {
+      await notion.blocks.children.append({ block_id: pageId, children: chunks[0] as never });
+      savedBlocks = chunks[0].length;
+    } catch (err) {
+      return NextResponse.json<NotionSaveResponse>({
+        ok: false, stage: "append", pageId, savedBlocks, totalBlocks, error: errorMessage(err),
+      });
+    }
+  }
   for (const chunk of chunks.slice(1)) {
     try {
       // 요청 사이에 간격을 둬 rate limit(평균 초당 3요청)에 걸리지 않게 한다.
@@ -135,5 +214,8 @@ export async function POST(req: NextRequest) {
     skippedProperties,
     dataSourceName,
     mappingIgnored,
+    appended,
+    pageRecreated,
+    syncedTurns: payload.turns.length,
   });
 }

@@ -125,6 +125,14 @@ export type NoteRecord = {
   context: string;
   discussions?: DiscussionItem[];
   quotes?: QuoteCard[]; // 타임스탬프 앵커 인용 목록
+  /** 이 노트가 만든 Notion 페이지. 있으면 새로 만들지 않고 여기에 이어 붙인다. */
+  notionPageId?: string;
+  /**
+   * 이미 Notion에 보낸 발화 수. 이어 녹음 시 이 뒤의 발화만 추가한다.
+   * 블록 수가 아니라 발화 수를 세는 이유: 발화 하나가 2000자를 넘으면 블록이 여러 개가
+   * 되므로, 블록 만드는 규칙이 바뀌면 블록 수는 어긋난다.
+   */
+  notionSyncedTurns?: number;
 };
 
 export type TurnSegment = {
@@ -225,6 +233,12 @@ export type NotionSaveResponse =
       dataSourceName: string;
       /** 매핑이 다른 data source의 것이라 무시됐는가. */
       mappingIgnored?: boolean;
+      /** 새로 만들지 않고 기존 페이지에 이어 붙였는가. */
+      appended?: boolean;
+      /** 이번 저장까지 Notion에 반영된 발화 수. 클라이언트가 노트에 기록한다. */
+      syncedTurns?: number;
+      /** 기존 페이지를 찾지 못해 새로 만들었는가. */
+      pageRecreated?: boolean;
     }
   | {
       ok: false;
@@ -254,8 +268,18 @@ export type NotionSchemaResponse =
 export type NotionSaveState =
   | { kind: "idle" }
   | { kind: "saving" }
-  | { kind: "saved"; skippedProperties: string[]; mappingIgnored?: boolean }
-  | { kind: "partial"; savedBlocks: number; totalBlocks: number }
+  | {
+      kind: "saved";
+      skippedProperties: string[];
+      mappingIgnored?: boolean;
+      appended?: boolean;
+      pageRecreated?: boolean;
+      /** 저장에 성공한 페이지. 노트에 적어 두면 다음 저장이 여기에 이어 붙는다. */
+      pageId?: string;
+      syncedTurns?: number;
+    }
+  /** appended가 참이면 이미 있는 페이지에 일부만 붙은 상태다 — 재시도는 중복을 만든다. */
+  | { kind: "partial"; savedBlocks: number; totalBlocks: number; appended?: boolean }
   | { kind: "unconfigured" }
   | { kind: "failed"; message: string }
   /** 로컬(IndexedDB) 저장 자체가 실패한 상태. 이 회의는 어디에도 저장되지 않았다. */
