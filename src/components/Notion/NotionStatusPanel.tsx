@@ -22,8 +22,10 @@ export interface NotionStatusPanelProps {
  * 맞춰 놓은 사실관계(페이지 재생성 / 무시된 매핑 / 부분 저장 뒤의 재시도가 중복을
  * 만든다는 점)가 다시 갈라진다. 헤더 칩은 한 마디만 필요해서 AppShell이 따로 짧은
  * 매핑을 쓴다 — 이 문장들을 거기로 옮기지 않는다.
+ *
+ * notionPageId를 같이 받는 이유는 아래 idle 분기 주석 참고.
  */
-function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNode } {
+function bannerText(status: NotionSaveState, notionPageId?: string): { ico: string; text: React.ReactNode } {
   switch (status.kind) {
     case "saving":
       // 중지 직후의 마지막 음성 처리와 그 뒤의 저장을 한 문구로 덮는다. 두 단계 모두
@@ -67,8 +69,15 @@ function bannerText(status: NotionSaveState): { ico: string; text: React.ReactNo
     // "저장됨"류 표현을 절대 쓰지 않는다 — 위험을 숨기면 안 된다.
     case "localFailed":
       return { ico: "❌", text: <span><b>저장 실패</b> — {status.message}</span> };
+    // idle은 "이번 세션에서 아직 Notion으로 보내지 않았다"는 뜻일 뿐이다. 노트를 바꿀 때
+    // page.tsx의 handleOpenNote가 이 상태를 idle로 되돌리는데, notionPageId와
+    // notionSyncedTurns는 IndexedDB에 그대로 남아 있다. 그래서 세션 상태만 보고
+    // "아직 저장하지 않았습니다"라고 하면, 사이드바에서 예전 노트를 열었을 때 바로 아래에
+    // 붙는 [Notion에서 열기] 링크·"발화 N/M 동기화" 줄과 정면으로 어긋난다.
     default:
-      return { ico: "⏺", text: <span><b>아직 저장하지 않았습니다.</b></span> };
+      return notionPageId
+        ? { ico: "✅", text: <span><b>Notion에 저장되어 있습니다.</b> 이번 세션에서는 아직 보내지 않았습니다.</span> }
+        : { ico: "⏺", text: <span><b>아직 저장하지 않았습니다.</b></span> };
   }
 }
 
@@ -82,11 +91,14 @@ export default function NotionStatusPanel({
   onOpenAnalysis,
   analyzing = false,
 }: NotionStatusPanelProps) {
-  const { ico, text } = bannerText(status);
+  const { ico, text } = bannerText(status, notionPageId);
 
   // 저장에 성공한 뒤에도 다시 보낼 수 있어야 한다 — 제목·참석자를 고친 뒤 이 버튼이
   // 없으면 Notion 페이지는 낡은 값을 그대로 달고 있는다. 실패·부분 저장은 재시도 대상이다.
-  const canResend = status.kind === "saved" && !!status.pageId;
+  // 사이드바에서 다시 연 노트(idle + notionPageId)도 마찬가지다. 이 경우를 빼면 이미
+  // 저장된 노트의 제목·참석자 수정을 Notion으로 밀어 올릴 버튼이 화면에 하나도 없다.
+  const canResend =
+    (status.kind === "saved" && !!status.pageId) || (status.kind === "idle" && !!notionPageId);
   const canRetry = status.kind === "failed" || status.kind === "partial" || canResend;
 
   const skippedProperties = status.kind === "saved" ? status.skippedProperties : [];

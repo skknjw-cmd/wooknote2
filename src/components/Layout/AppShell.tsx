@@ -53,8 +53,10 @@ interface AppShellProps {
  * NotionStatusPanel의 bannerText를 끌어다 쓰지 않는다 — 저쪽은 한 문장짜리 설명이라
  * 칩 한 칸에 들어가지 않는다. 자세한 사정(어디에 저장됐는지, 다시 시도하면 무슨 일이
  * 생기는지)은 칩을 눌러 여는 오른쪽 패널이 말한다. 아이콘만 같은 것을 쓴다.
+ *
+ * notionPageId를 같이 받는 이유는 아래 기본 분기 주석 참고.
  */
-function statusChip(status: NotionSaveState): { ico: string; label: string } {
+function statusChip(status: NotionSaveState, notionPageId?: string): { ico: string; label: string } {
   switch (status.kind) {
     case "saving":
       return { ico: "⏳", label: "저장 중…" };
@@ -69,8 +71,11 @@ function statusChip(status: NotionSaveState): { ico: string; label: string } {
     // 로컬 저장까지 실패한 경우 — "저장됨"류 표현을 쓰지 않는다.
     case "localFailed":
       return { ico: "❌", label: "로컬도 실패" };
+    // idle은 세션 상태라 노트를 바꿀 때마다 초기화된다(page.tsx handleOpenNote). 노트에
+    // notionPageId가 남아 있으면 그 노트는 이미 Notion에 있다 — 여기서 "저장 전"이라고 하면
+    // 오른쪽 패널의 [Notion에서 열기] 링크와 헤더 칩이 서로 다른 말을 하게 된다.
     default:
-      return { ico: "⏺", label: "저장 전" };
+      return notionPageId ? { ico: "✅", label: "저장됨" } : { ico: "⏺", label: "저장 전" };
   }
 }
 
@@ -117,7 +122,7 @@ export default function AppShell({
   // 지금 보고 있는 노트가 실제로 녹음 중인가. 다른 노트를 녹음 중이면 이 패널은 녹음 상태가 아니다.
   const isRecordingThisNote = isRecording && (!recordingNoteId || currentNote?.id === recordingNoteId);
 
-  const chip = statusChip(notionStatus);
+  const chip = statusChip(notionStatus, currentNote?.notionPageId);
 
   return (
     <div

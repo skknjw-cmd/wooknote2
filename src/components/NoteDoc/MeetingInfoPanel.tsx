@@ -94,8 +94,20 @@ function IconNote() {
 /**
  * 회의 일시·장소·참석자·소요시간과 자유 메모.
  *
- * 여기 있는 값들은 Notion으로 실제 나가는 값이다(장소는 속성이 아니라 트랜스크립트 맨 위
- * "회의 정보" 줄에 실린다). 그래서 사용자가 저장 전에 고칠 수 있어야 한다.
+ * 여기서 고친 값이 전부 Notion으로 나가지는 않는다. notionSave.ts의
+ * noteToNotionPayload가 실제로 무엇을 집어 가는지가 기준이다.
+ *
+ * - 회의 장소: 그대로 나간다. 단 속성이 아니라 트랜스크립트 맨 위 "회의 정보" 줄에 실린다.
+ * - 참석자: note.participants(화자 명단)가 비어 있지 않으면 그쪽이 이기고, 여기서 고친
+ *   note.attendees는 조용히 버려진다. 즉 녹음으로 만든 회의에서는 이 칸을 고쳐도 Notion에
+ *   반영되지 않고, 텍스트 입력으로 만든 노트에서만 효과가 있다.
+ * - 회의 일시: `YYYY-MM-DD` 형태일 때만 나가고, 그 외에는 노트 생성일로 대체된다. 이 칸은
+ *   formatDateTime()의 "2026.09.16 오후 3:21" 꼴을 보여주고 플레이스홀더도 시간까지
+ *   부추기므로, 화면에 보이는 값과 Notion에 적히는 날짜가 다를 수 있다.
+ * - 소요시간: 읽기 전용이다. audioDuration에서 계산해 보여주기만 한다.
+ *
+ * 이 어긋남을 고칠지(참석자 수정을 우선시할지, 날짜 입력을 제한할지)는 따로 정할 일이다.
+ * 여기서는 지금 실제로 일어나는 일만 적어 둔다.
  * 제목은 여기 없다 — 헤더 입력 하나가 유일한 제목 입력구다.
  */
 export default function MeetingInfoPanel({ note, participants, onUpdateNote }: MeetingInfoPanelProps) {
@@ -132,6 +144,8 @@ export default function MeetingInfoPanel({ note, participants, onUpdateNote }: M
           placeholder="장소 입력"
           onSave={(v) => note && onUpdateNote?.({ ...note, location: v })}
         />
+        {/* 화자 명단(note.participants)이 있으면 Notion 참석자 속성은 그쪽이 이긴다 —
+            여기서 고친 값은 화자 명단이 비어 있는 노트에서만 Notion에 나간다. */}
         <PropRow
           icon={
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">

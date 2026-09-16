@@ -488,6 +488,9 @@ export default function Home() {
   async function handleRetryNotion() {
     // handleOpenNote가 노트 전환 시 notionStatus를 idle로 되돌리므로, 상태가 idle이 아닌 동안
     // currentNote는 방금 저장한 그 노트다. 화자명 수정 등 이후 편집까지 반영해 다시 올린다.
+    // idle일 때도 이 버튼이 뜰 수 있다(사이드바에서 다시 연, 이미 notionPageId가 있는 노트).
+    // 그 경우에도 currentNote는 지금 화면에 띄워 둔 바로 그 노트이고, notionTarget이
+    // note.notionPageId를 읽어 같은 페이지에 이어 붙이므로 대상은 어긋나지 않는다.
     const note = currentNote;
     if (!note) return;
     setNotionStatus({ kind: "saving" });
