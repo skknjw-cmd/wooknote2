@@ -153,15 +153,26 @@ export default function AppShell({
             <line x1="6" y1="2" x2="6" y2="14" />
           </svg>
         </button>
-        <span className="crumb">
-          <span>전체 노트</span>
-          <span className="crumb-sep">/</span>
-          <span>오늘</span>
-        </span>
         <input
           className="title-input"
           defaultValue={currentNote?.title || "새 노트"}
-          key={currentNote?.id}
+          placeholder="제목 없음"
+          // key에 제목을 넣는 이유: 이 입력칸은 비제어(defaultValue)라서, 본문에서
+          // 제목이 바뀌어도 스스로 다시 그리지 않는다. 제목이 바뀔 때 remount 시켜
+          // 두 입력구가 서로 다른 제목을 보여주는 일을 막는다. blur 직후에만 바뀌므로
+          // 타이핑 중 포커스를 잃지 않는다.
+          key={`${currentNote?.id}:${currentNote?.title}`}
+          onBlur={(e) => {
+            const note = currentNote;
+            if (!note) return;
+            const next = e.currentTarget.value.trim();
+            // 빈 제목으로 지워버리면 Notion 페이지 제목이 사라진다. 비우면 원래대로 둔다.
+            if (!next || next === note.title) {
+              e.currentTarget.value = note.title;
+              return;
+            }
+            onUpdateNote?.({ ...note, title: next });
+          }}
         />
         <div className="actions">
           {isRecording && (
@@ -192,23 +203,10 @@ export default function AppShell({
               다시 정리
             </button>
           )}
-          <button className="icon-btn" title="복사">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="5" y="5" width="8" height="8" rx="1.5" />
-              <path d="M3 11V3h8" strokeLinecap="round" />
-            </svg>
-          </button>
           <button className="icon-btn" title="내보내기" onClick={onExport}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M8 2v8M5 7l3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M3 12h10" strokeLinecap="round" />
-            </svg>
-          </button>
-          <button className="icon-btn" title="더 보기">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="4" cy="8" r="1" fill="currentColor" />
-              <circle cx="8" cy="8" r="1" fill="currentColor" />
-              <circle cx="12" cy="8" r="1" fill="currentColor" />
             </svg>
           </button>
         </div>
