@@ -473,6 +473,8 @@ export default function Home() {
       notionPageId: state.pageId,
       notionSyncedTurns: state.syncedTurns ?? 0,
       notionSyncedTitle: state.syncedTitle,
+      notionSyncedDate: state.syncedDate,
+      notionSyncedAttendees: state.syncedAttendees,
     };
     setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, ...patch } : n)));
     setCurrentNote((cur) => (cur && cur.id === noteId ? { ...cur, ...patch } : cur));

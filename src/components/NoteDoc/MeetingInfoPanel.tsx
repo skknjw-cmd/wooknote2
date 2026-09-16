@@ -94,20 +94,18 @@ function IconNote() {
 /**
  * 회의 일시·장소·참석자·소요시간과 자유 메모.
  *
- * 여기서 고친 값이 전부 Notion으로 나가지는 않는다. notionSave.ts의
- * noteToNotionPayload가 실제로 무엇을 집어 가는지가 기준이다.
+ * 여기서 고친 값은 Notion으로 나간다. 무엇이 어떻게 나가는지는 notionSave.ts의
+ * noteToNotionPayload가 기준이다.
  *
  * - 회의 장소: 그대로 나간다. 단 속성이 아니라 트랜스크립트 맨 위 "회의 정보" 줄에 실린다.
- * - 참석자: note.participants(화자 명단)가 비어 있지 않으면 그쪽이 이기고, 여기서 고친
- *   note.attendees는 조용히 버려진다. 즉 녹음으로 만든 회의에서는 이 칸을 고쳐도 Notion에
- *   반영되지 않고, 텍스트 입력으로 만든 노트에서만 효과가 있다.
- * - 회의 일시: `YYYY-MM-DD` 형태일 때만 나가고, 그 외에는 노트 생성일로 대체된다. 이 칸은
- *   formatDateTime()의 "2026.09.16 오후 3:21" 꼴을 보여주고 플레이스홀더도 시간까지
- *   부추기므로, 화면에 보이는 값과 Notion에 적히는 날짜가 다를 수 있다.
+ * - 참석자: 여기 적은 값이 화자 명단(note.participants)을 이긴다. 비워 두면 화자 이름이
+ *   자동으로 들어간다.
+ * - 회의 일시: "2026-09-16" · "2026.09.16" · "2026-09-16 14:30" 같은 입력을 해석해
+ *   날짜만 보낸다(toIsoDate). 해석할 수 없으면 노트 생성일로 대체된다.
  * - 소요시간: 읽기 전용이다. audioDuration에서 계산해 보여주기만 한다.
  *
- * 이 어긋남을 고칠지(참석자 수정을 우선시할지, 날짜 입력을 제한할지)는 따로 정할 일이다.
- * 여기서는 지금 실제로 일어나는 일만 적어 둔다.
+ * 이어 녹음으로 다시 저장할 때, 회의일시와 참석자는 **앱에서 바꿨을 때만** 덮어쓴다.
+ * Notion 쪽에서 손으로 고쳐 둔 값이 저장할 때마다 되돌아가지 않게 하기 위해서다(제목과 같은 규칙).
  * 제목은 여기 없다 — 헤더 입력 하나가 유일한 제목 입력구다.
  */
 export default function MeetingInfoPanel({ note, participants, onUpdateNote }: MeetingInfoPanelProps) {
@@ -129,7 +127,7 @@ export default function MeetingInfoPanel({ note, participants, onUpdateNote }: M
           }
           label="회의 일시"
           value={note?.meetingDate ?? (note ? formatDateTime(note.createdAt) : "")}
-          placeholder="날짜 및 시간 입력"
+          placeholder="2026-09-16"
           onSave={(v) => note && onUpdateNote?.({ ...note, meetingDate: v })}
         />
         <PropRow
@@ -144,8 +142,7 @@ export default function MeetingInfoPanel({ note, participants, onUpdateNote }: M
           placeholder="장소 입력"
           onSave={(v) => note && onUpdateNote?.({ ...note, location: v })}
         />
-        {/* 화자 명단(note.participants)이 있으면 Notion 참석자 속성은 그쪽이 이긴다 —
-            여기서 고친 값은 화자 명단이 비어 있는 노트에서만 Notion에 나간다. */}
+        {/* 여기 적은 값이 화자 명단을 이긴다. 비워 두면 화자 이름이 자동으로 들어간다. */}
         <PropRow
           icon={
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">

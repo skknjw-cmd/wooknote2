@@ -45,22 +45,32 @@ function httpStatus(err: unknown): number {
  * 이어 붙이기에서 늘 갱신하는 속성. 회의일시·입력방식은 이어 녹음으로 바뀌지 않는다.
  * 제목은 앱에서 바뀌었을 때만 여기에 더한다(아래 appendUpdateFields 참고).
  */
-const APPEND_UPDATE_FIELDS: NotionFieldKey[] = ["durationText", "attendees", "status"];
+const APPEND_UPDATE_FIELDS: NotionFieldKey[] = ["durationText", "status"];
 
 /**
  * 이번 갱신에서 바꿀 속성을 정한다.
  *
- * 제목은 앱의 제목이 마지막으로 보낸 제목과 다를 때만 넣는다. 매번 덮어쓰면 Notion에서
- * 더 낫게 고쳐 둔 제목이 이어 녹음마다 되돌아가고, 아예 빼면 1차 녹음 뒤에 붙인 제목이
- * 영영 반영되지 않는다. syncedTitle이 없는 노트(이 기능 이전에 저장된 노트)는 마지막으로
- * 보낸 제목을 알 수 없으므로 한 번 맞춰준다.
+ * 제목·회의일시·참석자는 앱의 값이 **마지막으로 보낸 값과 다를 때만** 넣는다.
+ * 매번 덮어쓰면 Notion에서 손으로 고쳐 둔 값이 이어 녹음마다 되돌아가고, 아예 빼면
+ * 1차 저장 뒤에 앱에서 고친 값이 영영 반영되지 않는다. 기록이 없는 노트(이 기능
+ * 이전에 저장된 노트)는 마지막으로 보낸 값을 알 수 없으므로 한 번 맞춰준다.
+ *
+ * 소요시간과 상태는 늘 갱신한다 — 녹음 길이와 저장 상태는 앱만 아는 값이다.
  */
 function appendUpdateFields(
   payload: NotionMeetingPayload,
-  target: { syncedTitle?: string },
+  target: { syncedTitle?: string; syncedDate?: string; syncedAttendees?: string },
 ): NotionUpdateKey[] {
-  const titleChanged = payload.title !== target.syncedTitle;
-  return titleChanged ? [...APPEND_UPDATE_FIELDS, "title"] : APPEND_UPDATE_FIELDS;
+  const fields: NotionUpdateKey[] = [...APPEND_UPDATE_FIELDS];
+  if (payload.title !== target.syncedTitle) fields.push("title");
+  if (payload.meetingDate !== target.syncedDate) fields.push("meetingDate");
+  if (attendeeKey(payload) !== target.syncedAttendees) fields.push("attendees");
+  return fields;
+}
+
+/** 참석자는 배열이라 그대로 비교할 수 없다. 보낸 모양 그대로 한 줄로 만들어 비교한다. */
+function attendeeKey(payload: NotionMeetingPayload): string {
+  return payload.attendees.join(", ");
 }
 
 type CreateResult =
@@ -106,7 +116,13 @@ export async function POST(req: NextRequest) {
     meeting: NotionMeetingPayload;
     mapping?: NotionMappingConfig | null;
     /** 있으면 새로 만들지 않고 이 페이지에 이어 붙인다. */
-    target?: { pageId: string; fromTurn: number; syncedTitle?: string } | null;
+    target?: {
+      pageId: string;
+      fromTurn: number;
+      syncedTitle?: string;
+      syncedDate?: string;
+      syncedAttendees?: string;
+    } | null;
   };
   const payload = body.meeting;
   const mapping = body.mapping ?? null;
@@ -242,5 +258,7 @@ export async function POST(req: NextRequest) {
     pageRecreated,
     syncedTurns: payload.turns.length,
     syncedTitle: payload.title,
+    syncedDate: payload.meetingDate,
+    syncedAttendees: attendeeKey(payload),
   });
 }

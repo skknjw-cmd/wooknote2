@@ -1,0 +1,36 @@
+{
+  "projectId": "2fed0413-3a24-489c-ae1b-f0fcf6538084",
+  "shape": "package",
+  "pkg": "autonote",
+  "globalName": "Autonote",
+  "srcDir": "src",
+  "tsconfig": "./tsconfig.json",
+  "cssEntry": "globals.css",
+  "componentSrcMap": {
+    "ActionBar": "./src/components/Layout/ActionBar.tsx",
+    "AnalysisView": "./src/components/Analysis/AnalysisView.tsx",
+    "ApiKeyModal": "./src/components/Layout/ApiKeyModal.tsx",
+    "AppShell": "./src/components/Layout/AppShell.tsx",
+    "AudioFilePanel": "./src/components/Recording/AudioFilePanel.tsx",
+    "ExportModal": "./src/components/NoteDoc/ExportModal.tsx",
+    "LiveTranscript": "./src/components/Recording/LiveTranscript.tsx",
+    "MeetingInfoPanel": "./src/components/NoteDoc/MeetingInfoPanel.tsx",
+    "ModeSelect": "./src/components/Layout/ModeSelect.tsx",
+    "ModelLoadingOverlay": "./src/components/Layout/ModelLoadingOverlay.tsx",
+    "NoteList": "./src/components/Sidebar/NoteList.tsx",
+    "NotionConnectionPanel": "./src/components/Settings/NotionConnectionPanel.tsx",
+    "NotionStatusPanel": "./src/components/Notion/NotionStatusPanel.tsx",
+    "PreMeetingRoster": "./src/components/Speaker/PreMeetingRoster.tsx",
+    "RecordingBar": "./src/components/Recording/RecordingBar.tsx",
+    "SpeakerBubble": "./src/components/Recording/SpeakerBubble.tsx",
+    "TextInputPanel": "./src/components/Recording/TextInputPanel.tsx",
+    "VideoPanel": "./src/components/Recording/VideoPanel.tsx"
+  },
+  "entry": "./ds-entry.ts",
+  "overrides": {
+    "SpeakerBubble": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}
