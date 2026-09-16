@@ -66,7 +66,7 @@ page.tsx
 └ ApiKeyModal ─ NotionConnectionPanel
 ```
 
-### 삭제 대상 (3,613줄)
+### 삭제 대상 (4,223줄)
 
 | 묶음 | 파일 |
 |---|---|
@@ -76,6 +76,11 @@ page.tsx
 | ConfigSection | `AnalysisOptions`(49) · `MeetingInfoForm`(77) + CSS 2개(105) |
 | 기타 컴포넌트 | `Settings/SettingsModal`(86) + CSS(114) · `Speaker/LiveWithPrompt`(62) |
 | lib | `meetingStorage.ts`(104) · `meetingStorage.test.ts`(92) · `wikiSave.ts`(61) |
+| lib (별도 판단) | `speakerMerge.ts`(224) · `speakerMerge.test.ts`(386) |
+
+`speakerMerge`는 `InputSection/InputTabs`만 쓰므로 함께 고아가 된다. 다만 **통과하는
+테스트 386줄**이 딸려 있어 성격이 다르므로, 계획에서 커밋을 나눠 이것만 거부할 수
+있게 한다.
 
 `SpeakerMappingPanel`은 `ResultSection/TranscriptEditor`만 쓰고, 그 둘 다 `/result`에서만
 쓰인다. 살아있는 `src/lib/speakerMapping.ts`와는 다른 파일이므로 **그것은 남긴다**
@@ -109,10 +114,15 @@ page.tsx
 | `AppShell.tsx:207` `[더 보기]` | `onClick` 없음 | 제거 |
 | `AppShell.tsx:156` 빵부스러기 `전체 노트 / 오늘` | 하드코딩 | 제거(2단계 헤더에서 다시 설계) |
 | `NoteDocument.tsx:492` `"녹음 중 자동으로 요약됩니다..."` | 일어나지 않는 일 | 문구 제거 |
-| `page.tsx`의 `analyzing` | 이름은 AI 분석, 실제는 Notion 저장 진행률 | `savingToNotion`으로 개명 |
+| `page.tsx`의 `analyzing` | **두 가지를 겸한다** — `analyzeFromTurns`(진짜 AI)와 `handleTextSubmit`(Notion 저장) | 개명이 아니라 **둘로 분리** |
 
-`analyzing` 개명은 이름만 바꾸는 것이 아니다. `AppShell` · `NoteDocument` ·
-`TextInputPanel`이 이 prop을 받으므로 세 곳의 표시 문구가 실제와 맞는지 같이 본다.
+계획을 쓰며 확인한 결과, `analyzing`은 **한쪽에서는 진짜 AI 분석이 맞다**(`page.tsx:602`).
+그래서 통째로 개명하면 거짓이 된다. `handleTextSubmit`(`:709`)만 새 상태
+`savingToNotion`으로 떼어낸다.
+
+**이것은 화면에 거짓이 뜨는 문제가 아니다.** 텍스트 제출 중에는 `TextInputPanel`
+("저장 중...")만 보이고 `AppShell`("AI 분석 중...")은 렌더되지 않는다. 코드를 읽는
+사람이 속는 문제이고, 2단계에서 prop을 옮길 때 잘못 옮기기 쉬운 자리다.
 
 ---
 
