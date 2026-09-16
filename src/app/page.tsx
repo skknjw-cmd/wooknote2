@@ -470,9 +470,11 @@ export default function Home() {
     setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, ...patch } : n)));
     setCurrentNote((cur) => (cur && cur.id === noteId ? { ...cur, ...patch } : cur));
 
-    const base =
-      notes.find((n) => n.id === noteId) ??
-      (currentNote && currentNote.id === noteId ? currentNote : undefined);
+    // notes가 아니라 notesRef에서 읽는다. 이 함수는 Notion 왕복(수 초)을 기다린 뒤에
+    // 실행되므로 notes는 이미 옛날 배열이고, 그걸로 쓰면 그 사이의 편집이 지워진다.
+    // 못 찾으면 쓰지 않는다 — 다음 저장이 새 페이지를 만드는 편이 회의록을 되돌리는
+    // 것보다 낫다.
+    const base = notesRef.current.find((n) => n.id === noteId);
     if (base) dbSave({ ...base, ...patch }).catch(console.error);
   }
 
