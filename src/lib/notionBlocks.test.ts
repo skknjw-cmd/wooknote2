@@ -643,3 +643,34 @@ describe("filterProperties — only", () => {
     expect(skipped).toEqual([]);
   });
 });
+
+describe("filterProperties — 실제로 쓴 필드", () => {
+  // 건너뛴 속성을 "보냈다"고 기록하면, 사용자가 매핑을 고친 뒤에도 값이 같다는 이유로
+  // 영영 다시 보내지 않는다. 그래서 무엇이 실제로 들어갔는지 알려줘야 한다.
+  it("채운 필드만 written에 담는다", () => {
+    const schema = { 이름: { type: "title" }, 참석자: { type: "rich_text" } };
+    const { written } = filterProperties(schema, payload);
+    expect(written).toContain("title");
+    expect(written).toContain("attendees");
+    expect(written).not.toContain("meetingDate");
+    expect(written).not.toContain("status");
+  });
+
+  it("타입이 맞지 않아 건너뛴 필드는 written에 없다", () => {
+    const schema = { 이름: { type: "title" }, 회의일시: { type: "rich_text" } };
+    const { written } = filterProperties(schema, payload);
+    expect(written).not.toContain("meetingDate");
+  });
+
+  it("only로 제한하면 그 안에서 채운 것만 담긴다", () => {
+    const { written } = filterProperties(fullSchema, payload, null, ["attendees"]);
+    expect(written).toEqual(["attendees"]);
+  });
+
+  it("전부 채워지면 title까지 담긴다", () => {
+    const { written } = filterProperties(fullSchema, payload);
+    expect([...written].sort()).toEqual(
+      ["attendees", "durationText", "entryMethod", "meetingDate", "status", "title"].sort(),
+    );
+  });
+});

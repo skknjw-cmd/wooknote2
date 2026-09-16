@@ -18,6 +18,8 @@ export type RecordingHandlers = {
 };
 
 const CHUNK_MS = 15 * 1000;
+// Vercel 서버리스 함수의 요청 본문 상한은 4.5MB다. 여유를 두고 4MB에서 자른다.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 interface STTState {
   modelStatus: ModelStatus;
@@ -67,6 +69,8 @@ export function useOfflineSTT(): STTState {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chunkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** 지금 청크가 시작된 벽시계 시각. 스로틀된 타이머 대신 워치독이 이것으로 판단한다. */
+  const chunkStartedAtRef = useRef(0);
   const isRecordingRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const recordStartTimeRef = useRef(0);   // Date.now() 기반 — 스로틀링에 강함
@@ -124,8 +128,29 @@ export function useOfflineSTT(): STTState {
         console.warn("[STT] WAV 변환 실패, WebM 원본 사용");
       }
 
+      // 서버리스 함수 본문 상한(4.5MB)을 넘으면 요청 자체가 413으로 거부된다.
+      // WAV는 무압축이라 16kHz mono에서 초당 32KB — 약 140초면 상한에 닿는다.
+      // 그때는 원본 WebM(opus, 초당 약 8KB)을 그대로 보낸다. 변환본보다 인식률이
+      // 조금 낮을 수 있지만, 통째로 잃는 것보다 낫다.
+      if (sendBlob.size > MAX_UPLOAD_BYTES && blob.size < sendBlob.size) {
+        console.warn(
+          `[STT] WAV ${(sendBlob.size / 1048576).toFixed(1)}MB가 상한을 넘어 WebM 원본으로 보냄` +
+          ` (${(blob.size / 1048576).toFixed(1)}MB)`,
+        );
+        sendBlob = blob;
+      }
+      if (sendBlob.size > MAX_UPLOAD_BYTES) {
+        // 여기까지 오면 원본도 상한을 넘는다. 413의 원문을 그대로 보여 주면 사용자는
+        // 무엇을 해야 할지 알 수 없으므로, 무슨 일이 일어났는지 말한다.
+        setSttError(
+          `이 구간 음성이 너무 커서 전송하지 못했습니다 (${(sendBlob.size / 1048576).toFixed(1)}MB).` +
+          ` 녹음 탭을 화면 앞에 두면 구간이 짧게 잘립니다.`,
+        );
+        return;
+      }
+
       const form = new FormData();
-      form.append("media", sendBlob, "chunk.wav");
+      form.append("media", sendBlob, sendBlob === blob ? "chunk.webm" : "chunk.wav");
       const roster = getParticipantsRef.current?.() ?? [];
       if (roster.length > 0) {
         form.append("attendeeCount", String(roster.length));
@@ -198,6 +223,8 @@ export function useOfflineSTT(): STTState {
   // ── 청크 시작 ───────────────────────────────────────────────
   function startChunk(stream: MediaStream) {
     const chunkStartMs = elapsedMsRef.current;
+    // 벽시계로 기록한다. setTimeout은 배경 탭에서 스로틀되므로 이것만 믿을 수 있다.
+    chunkStartedAtRef.current = Date.now();
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
       : "audio/webm";
@@ -301,6 +328,15 @@ export function useOfflineSTT(): STTState {
         console.warn("[STT] 워치독: 녹음기 재시작");
         if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current);
         startChunk(streamRef.current);
+        return;
+      }
+      // 청크 회전 타이머는 setTimeout이라 배경 탭에서 스로틀된다. 그대로 두면 청크
+      // 하나가 몇 분짜리가 되어 WAV가 4.5MB 상한을 넘고 413으로 통째로 버려진다.
+      // 벽시계로 재서 회전 시점이 지났으면 여기서 끊는다.
+      if (Date.now() - chunkStartedAtRef.current >= CHUNK_MS) {
+        console.warn("[STT] 워치독: 청크가 너무 길어 회전시킴");
+        if (chunkTimerRef.current) clearTimeout(chunkTimerRef.current);
+        mediaRecorder.current.stop();
       }
     }, 5000);
   // eslint-disable-next-line react-hooks/exhaustive-deps

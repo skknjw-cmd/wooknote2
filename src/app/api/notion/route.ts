@@ -170,6 +170,7 @@ export async function POST(req: NextRequest) {
   );
   let properties = filtered.properties;
   let skippedProperties = filtered.skipped;
+  let written = new Set<NotionUpdateKey>(filtered.written);
 
   // 3. 블록 생성 후 첫 100개는 페이지 생성과 함께, 나머지는 append
   //    이어 붙이기는 이미 보낸 발화를 빼고 새 발화만 만든다.
@@ -201,6 +202,7 @@ export async function POST(req: NextRequest) {
       const full = filterProperties(schema, payload, fields);
       properties = full.properties;
       skippedProperties = full.skipped;
+      written = new Set(full.written);
       chunks = chunkBlocks(buildBlocks(payload));
       totalBlocks = chunks.reduce((n, c) => n + c.length, 0);
 
@@ -257,8 +259,11 @@ export async function POST(req: NextRequest) {
     appended,
     pageRecreated,
     syncedTurns: payload.turns.length,
-    syncedTitle: payload.title,
-    syncedDate: payload.meetingDate,
-    syncedAttendees: attendeeKey(payload),
+    // 실제로 Notion에 들어간 값만 "보냈다"고 기록한다. 속성이 없어 건너뛴 것을 기록하면,
+    // 사용자가 매핑을 고친 뒤에도 값이 같다는 이유로 다시 보내지 않아 영영 비어 있게 된다.
+    // 쓰지 못한 필드는 이전 기록을 그대로 둔다(create면 undefined — 다음에 다시 시도한다).
+    syncedTitle: written.has("title") ? payload.title : target?.syncedTitle,
+    syncedDate: written.has("meetingDate") ? payload.meetingDate : target?.syncedDate,
+    syncedAttendees: written.has("attendees") ? attendeeKey(payload) : target?.syncedAttendees,
   });
 }
