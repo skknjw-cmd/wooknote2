@@ -364,7 +364,14 @@ export default function NoteDocument({
           contentEditable
           suppressContentEditableWarning
           onBlur={(e) => {
-            if (note) onUpdateNote?.({ ...note, title: e.currentTarget.textContent ?? note.title });
+            if (!note) return;
+            const next = (e.currentTarget.textContent ?? "").trim();
+            // 빈 제목으로 지워버리면 Notion 페이지 제목이 사라진다. 비우면 원래대로 둔다.
+            if (!next) {
+              e.currentTarget.textContent = note.title;
+              return;
+            }
+            onUpdateNote?.({ ...note, title: next });
           }}
           style={{ outline: "none" }}
         >
@@ -489,7 +496,9 @@ export default function NoteDocument({
               </ul>
             ) : (
               <p style={{ color: "var(--ink-4)", fontSize: 13 }}>
-                {mode === "live" ? "녹음 중 자동으로 요약됩니다..." : "요약이 없습니다."}
+                {/* 녹음이 끝나도 자동 분석은 하지 않는다. 녹음 중이든 아니든
+                    [다시 정리]를 눌러야 요약이 생긴다 — 두 경우에 같은 말을 한다. */}
+                아직 정리하지 않았습니다. [다시 정리]를 누르면 AI가 요약합니다.
               </p>
             )}
           </div>
