@@ -1,4 +1,9 @@
-import type { NotionMeetingPayload, NotionFieldKey, NotionFieldMapping } from "@/types/meeting";
+import type {
+  NotionMeetingPayload,
+  NotionFieldKey,
+  NotionFieldMapping,
+  NotionUpdateKey,
+} from "@/types/meeting";
 
 /** Notion rich_text 1개의 최대 길이. */
 export const NOTION_TEXT_LIMIT = 2000;
@@ -212,7 +217,7 @@ export function filterProperties(
   schema: NotionPropertySchema,
   payload: NotionMeetingPayload,
   fields?: Partial<Record<NotionFieldKey, NotionFieldMapping>> | null,
-  only?: NotionFieldKey[],
+  only?: NotionUpdateKey[],
 ): { properties: Record<string, unknown>; skipped: string[] } {
   const properties: Record<string, unknown> = {};
   const skipped: string[] = [];
@@ -221,16 +226,19 @@ export function filterProperties(
   const claimedBy: Record<string, string> = {};
 
   // only를 주면 그 필드만 처리한다. 이어 녹음으로 기존 페이지를 갱신할 때
-  // 소요시간·참석자·상태만 바꾸고 제목·회의일시·입력방식은 그대로 두기 위한 것이다.
+  // 일부 속성만 바꾸고 나머지는 그대로 두기 위한 것이다.
   const wants = (key: NotionFieldKey) => !only || only.includes(key);
 
-  // title: 타입으로 탐색. only를 준 갱신에서는 제목을 건드리지 않는다 —
-  // Claude가 더 나은 제목으로 고쳐 놓았을 수 있다.
-  const titleName = only ? undefined : Object.keys(schema).find((k) => schema[k].type === "title");
+  // title: 타입으로 탐색. only를 준 갱신에서는 "title"을 명시했을 때만 건드린다 —
+  // 그러지 않으면 Notion 쪽에서 더 낫게 고쳐 둔 제목을 매번 되돌리게 된다.
+  const wantsTitle = !only || only.includes("title");
+  const titleName = wantsTitle
+    ? Object.keys(schema).find((k) => schema[k].type === "title")
+    : undefined;
   if (titleName) {
     properties[titleName] = { title: [{ text: { content: payload.title } }] };
     claimedBy[titleName] = "이름";
-  } else if (!only) {
+  } else if (wantsTitle) {
     skipped.push("이름(title)");
   }
 

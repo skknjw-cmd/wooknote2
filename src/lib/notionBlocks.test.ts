@@ -604,4 +604,28 @@ describe("filterProperties — only", () => {
     expect(properties["소요시간"]).toBeUndefined();
     expect(skipped).toEqual(["소요시간"]);
   });
+
+  it('only에 "title"을 넣으면 제목도 채운다', () => {
+    const { properties } = filterProperties(fullSchema, payload, null, ["title", "attendees"]);
+    expect(properties["이름"]).toEqual({ title: [{ text: { content: payload.title } }] });
+    expect(properties["참석자"]).toBeDefined();
+    expect(properties["소요시간"]).toBeUndefined();
+  });
+
+  it('only에 "title"만 넣으면 제목 하나만 바뀐다', () => {
+    const { properties, skipped } = filterProperties(fullSchema, payload, null, ["title"]);
+    expect(Object.keys(properties)).toEqual(["이름"]);
+    expect(skipped).toEqual([]);
+  });
+
+  it('only에 "title"을 넣었는데 title 속성이 없으면 skipped에 남는다', () => {
+    const { properties, skipped } = filterProperties({ 참석자: { type: "rich_text" } }, payload, null, ["title"]);
+    expect(properties["이름"]).toBeUndefined();
+    expect(skipped).toEqual(["이름(title)"]);
+  });
+
+  it('only에 "title"이 없으면 title 속성이 없어도 skipped에 남기지 않는다', () => {
+    const { skipped } = filterProperties({ 참석자: { type: "rich_text" } }, payload, null, ["attendees"]);
+    expect(skipped).toEqual([]);
+  });
 });

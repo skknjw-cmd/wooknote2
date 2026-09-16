@@ -466,7 +466,11 @@ export default function Home() {
    */
   function rememberNotionPage(noteId: string, state: NotionSaveState) {
     if (state.kind !== "saved" || !state.pageId) return;
-    const patch = { notionPageId: state.pageId, notionSyncedTurns: state.syncedTurns ?? 0 };
+    const patch = {
+      notionPageId: state.pageId,
+      notionSyncedTurns: state.syncedTurns ?? 0,
+      notionSyncedTitle: state.syncedTitle,
+    };
     setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, ...patch } : n)));
     setCurrentNote((cur) => (cur && cur.id === noteId ? { ...cur, ...patch } : cur));
 

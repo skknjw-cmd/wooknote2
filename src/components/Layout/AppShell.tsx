@@ -230,7 +230,12 @@ export default function AppShell({
       <div style={{ display: "flex", overflow: "hidden", position: "relative" }}>
         {mode === "review" && (() => {
           const { ico, text } = bannerText(notionStatus);
-          const canRetry = notionStatus.kind === "failed" || notionStatus.kind === "partial";
+          // 저장에 성공한 뒤에도 다시 보낼 수 있어야 한다. 제목·참석자를 고친 뒤 이 버튼이
+          // 없으면, 다시 녹음하기 전까지 Notion 페이지는 낡은 값을 그대로 달고 있는다.
+          // (이어 붙일 발화가 없으므로 이 재전송은 속성만 갱신한다.)
+          const canResend = notionStatus.kind === "saved" && !!notionStatus.pageId;
+          const canRetry =
+            notionStatus.kind === "failed" || notionStatus.kind === "partial" || canResend;
           return (
             <div className="review-banner" style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 10 }}>
               <span className="ico">{ico}</span>
@@ -238,7 +243,9 @@ export default function AppShell({
               <div className="actions">
                 <button className="btn" onClick={onToggleRecording}>이어 녹음</button>
                 {canRetry && (
-                  <button className="btn" onClick={onRetryNotion}>다시 시도</button>
+                  <button className="btn" onClick={onRetryNotion}>
+                    {canResend ? "Notion 갱신" : "다시 시도"}
+                  </button>
                 )}
                 {notionStatus.kind === "unconfigured" && (
                   <button className="btn" onClick={onSettings}>설정</button>

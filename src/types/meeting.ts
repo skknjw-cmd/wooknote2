@@ -133,6 +133,11 @@ export type NoteRecord = {
    * 되므로, 블록 만드는 규칙이 바뀌면 블록 수는 어긋난다.
    */
   notionSyncedTurns?: number;
+  /**
+   * 마지막으로 Notion에 보낸 제목. 앱의 제목이 이것과 다를 때만 페이지 제목을 갱신한다.
+   * 매번 덮어쓰면 Notion에서 더 낫게 고쳐 둔 제목이 이어 녹음마다 되돌아간다.
+   */
+  notionSyncedTitle?: string;
 };
 
 export type TurnSegment = {
@@ -183,6 +188,12 @@ export type EntryMethod = "live" | "text" | "audio" | "video";
 
 /** 매핑 가능한 앱 필드. 제목은 title 타입으로 찾으므로 제외한다. */
 export type NotionFieldKey = "meetingDate" | "attendees" | "durationText" | "status" | "entryMethod";
+
+/**
+ * 기존 페이지를 갱신할 때 "이번에 바꿀 것" 목록에 쓰는 키.
+ * 제목은 매핑 대상이 아니라 title 타입으로 찾으므로 NotionFieldKey에 없다.
+ */
+export type NotionUpdateKey = NotionFieldKey | "title";
 
 export type NotionFieldMapping = {
   /** 넣을 Notion 속성 이름. null이면 이 필드를 일부러 쓰지 않는다. */
@@ -237,6 +248,7 @@ export type NotionSaveResponse =
       appended?: boolean;
       /** 이번 저장까지 Notion에 반영된 발화 수. 클라이언트가 노트에 기록한다. */
       syncedTurns?: number;
+      syncedTitle?: string;
       /** 기존 페이지를 찾지 못해 새로 만들었는가. */
       pageRecreated?: boolean;
     }
@@ -277,6 +289,7 @@ export type NotionSaveState =
       /** 저장에 성공한 페이지. 노트에 적어 두면 다음 저장이 여기에 이어 붙는다. */
       pageId?: string;
       syncedTurns?: number;
+      syncedTitle?: string;
     }
   /** appended가 참이면 이미 있는 페이지에 일부만 붙은 상태다 — 재시도는 중복을 만든다. */
   | { kind: "partial"; savedBlocks: number; totalBlocks: number; appended?: boolean }
