@@ -220,9 +220,13 @@ export function filterProperties(
   payload: NotionMeetingPayload,
   fields?: Partial<Record<NotionFieldKey, NotionFieldMapping>> | null,
   only?: NotionUpdateKey[],
-): { properties: Record<string, unknown>; skipped: string[] } {
+): { properties: Record<string, unknown>; skipped: string[]; written: NotionUpdateKey[] } {
   const properties: Record<string, unknown> = {};
   const skipped: string[] = [];
+  // 실제로 값이 들어간 필드. 호출자가 "이건 보냈다"고 기록할 때 이것만 믿어야 한다.
+  // 건너뛴 속성을 보냈다고 적으면, 사용자가 매핑을 고친 뒤에도 값이 같다는 이유로
+  // 영영 다시 보내지 않는다.
+  const written: NotionUpdateKey[] = [];
   // target(속성 이름) → 그 속성을 먼저 차지한 필드 라벨. 같은 속성을 두 필드가
   // 가리킬 때 나중 필드가 덮어쓰지 않고 이유를 남기게 하려고 기록해 둔다.
   const claimedBy: Record<string, string> = {};
@@ -240,6 +244,7 @@ export function filterProperties(
   if (titleName) {
     properties[titleName] = { title: [{ text: { content: payload.title } }] };
     claimedBy[titleName] = "이름";
+    written.push("title");
   } else if (wantsTitle) {
     skipped.push("이름(title)");
   }
@@ -286,6 +291,7 @@ export function filterProperties(
     }
     properties[target] = plan.value;
     claimedBy[target] = plan.name;
+    written.push(plan.key);
   }
 
   // 선택형 속성 (select 또는 status). skipped 순서는 위 목록 뒤를 잇는다.
@@ -310,10 +316,11 @@ export function filterProperties(
     if ("value" in resolved) {
       properties[target] = resolved.value;
       claimedBy[target] = plan.name;
+      written.push(plan.key);
     } else {
       skipped.push(skipLabel(plan.name, m ? target : null, resolved.reason));
     }
   }
 
-  return { properties, skipped };
+  return { properties, skipped, written };
 }
