@@ -240,6 +240,16 @@ export type NotionSaveResponse =
       error: string;
     };
 
+/** POST /api/notion/schema 응답. */
+export type NotionSchemaResponse =
+  | {
+      ok: true;
+      dataSourceId: string;
+      dataSourceName: string;
+      properties: Array<{ name: string; type: string; options?: string[] }>;
+    }
+  | { ok: false; stage: "auth" | "schema"; error: string };
+
 /** 화면 배너가 표시하는 저장 상태. */
 export type NotionSaveState =
   | { kind: "idle" }
