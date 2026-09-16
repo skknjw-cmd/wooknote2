@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import type { NoteRecord, Participant, DiscussionItem } from "@/types/meeting";
+import type { NoteRecord, DiscussionItem } from "@/types/meeting";
 
 // context 텍스트("제목: 배경: ...\n논의: ...\n결론: ...") → DiscussionItem[]
 function parseContextToDiscussions(context: string): DiscussionItem[] {
@@ -40,16 +40,6 @@ function parseContextToDiscussions(context: string): DiscussionItem[] {
   }).filter((item) => item.title || item.background || item.discussion || item.conclusion);
 }
 
-interface NoteDocumentProps {
-  note: NoteRecord | null;
-  mode: "live" | "review";
-  participants: Participant[];
-  pendingTurnCount?: number;
-  onRegen?: () => void;
-  onUpdateNote?: (note: NoteRecord) => void;
-  analyzing?: boolean;
-}
-
 const EMPTY_NOTE: Partial<NoteRecord> = {
   title: "새로운 노트",
   summaryBullets: [],
@@ -61,67 +51,6 @@ const EMPTY_NOTE: Partial<NoteRecord> = {
   nextAgenda: [],
   memo: "",
 };
-
-function formatDateTime(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = d.getHours();
-  const m = String(d.getMinutes()).padStart(2, "0");
-  const ampm = h < 12 ? "오전" : "오후";
-  return `${y}.${mo}.${day} ${ampm} ${h % 12 || 12}:${m}`;
-}
-
-// ── 속성 행 (회의 일시 / 장소 / 참석자) ───────────────────────────
-function PropRow({
-  icon,
-  label,
-  value,
-  placeholder,
-  onSave,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  placeholder: string;
-  onSave: (v: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
-  useEffect(() => { setDraft(value); }, [value]);
-
-  function commit() {
-    setEditing(false);
-    onSave(draft);
-  }
-
-  return (
-    <div className="prop-row" onClick={() => !editing && setEditing(true)}>
-      <span className="prop-icon">{icon}</span>
-      <span className="prop-label">{label}</span>
-      {editing ? (
-        <input
-          ref={inputRef}
-          className="prop-input"
-          value={draft}
-          placeholder={placeholder}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setEditing(false); setDraft(value); } }}
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <span className={`prop-value${!value ? " empty" : ""}`}>
-          {value || placeholder}
-        </span>
-      )}
-    </div>
-  );
-}
 
 function IconFolder() {
   return (
@@ -153,16 +82,6 @@ function IconQuestion() {
     </svg>
   );
 }
-function IconUsers() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <circle cx="6" cy="5" r="2.5" />
-      <path d="M1 13a5 5 0 0110 0" />
-      <circle cx="12" cy="5" r="2" />
-      <path d="M14 13a3 3 0 00-3-3" />
-    </svg>
-  );
-}
 function IconCalendar() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -170,15 +89,6 @@ function IconCalendar() {
       <line x1="2" y1="7" x2="14" y2="7" />
       <line x1="5" y1="1.5" x2="5" y2="4.5" />
       <line x1="11" y1="1.5" x2="11" y2="4.5" />
-    </svg>
-  );
-}
-function IconNote() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <rect x="2" y="2" width="12" height="12" rx="1.5" />
-      <line x1="5" y1="6" x2="11" y2="6" />
-      <line x1="5" y1="9" x2="9" y2="9" />
     </svg>
   );
 }
@@ -277,15 +187,47 @@ function ActionDraftRow({
   );
 }
 
-export default function NoteDocument({
+export interface AnalysisViewProps {
+  note: NoteRecord | null;
+  pendingTurnCount?: number;
+  analyzing?: boolean;
+  onRegen?: () => void;
+  onUpdateNote?: (note: NoteRecord) => void;
+  onClose: () => void;
+}
+
+/**
+ * AI 분석 결과를 전체 화면으로 띄운다.
+ *
+ * 기본 화면에 두지 않는 이유: 회의가 끝나도 분석은 자동으로 돌지 않는다. 늘 띄워 두면
+ * "요약이 없습니다"가 화면 대부분을 차지한다. 여기 블록들은 이제 삭제된 NoteDocument에서
+ * 그대로 옮겨 온 것이라 편집 동작(contentEditable · 할 일 추가 · 체크박스)이 예전과 같다.
+ */
+export default function AnalysisView({
   note,
-  mode,
-  participants,
   pendingTurnCount = 0,
+  analyzing = false,
   onRegen,
   onUpdateNote,
-  analyzing = false,
-}: NoteDocumentProps) {
+  onClose,
+}: AnalysisViewProps) {
+  // Esc로 닫는다. 전체 화면을 덮으므로 빠져나갈 길이 분명해야 한다.
+  //
+  // 단 입력 중일 때는 양보한다. 이 화면 안의 InlineInput·ActionDraftRow·contentEditable
+  // 글머리는 Esc를 "이 편집 취소"로 쓰는데, React의 합성 핸들러는 버블링 중에 돌고 이
+  // window 리스너는 그보다 뒤에 돈다. 그래서 그냥 두면 결정사항 초안을 Esc로 무르는 순간
+  // 화면 전체가 같이 닫히고, contentEditable에서는 언마운트라 onBlur도 안 불려 고치던
+  // 내용이 그대로 날아간다.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const [regenerating, setRegenerating] = useState(false);
   const data = { ...EMPTY_NOTE, ...note };
 
@@ -346,7 +288,6 @@ export default function NoteDocument({
   }
 
   const hasPending = pendingTurnCount > 0;
-  const participantList = participants.length > 0 ? participants : (note?.participants ?? []);
   const pendingActions = actions.filter((a) => !a.done).length;
 
   async function handleRegen() {
@@ -357,89 +298,13 @@ export default function NoteDocument({
   }
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", background: "var(--surface)" }}>
-      <div className="note-doc">
-        {/* Title */}
-        <h1
-          contentEditable
-          suppressContentEditableWarning
-          onBlur={(e) => {
-            if (!note) return;
-            const next = (e.currentTarget.textContent ?? "").trim();
-            // 빈 제목으로 지워버리면 Notion 페이지 제목이 사라진다. 비우면 원래대로 둔다.
-            // 바뀐 게 없을 때(공백만 추가/삭제한 경우 포함)도 그대로 반환해, 아무것도
-            // 고치지 않았는데 IndexedDB·.md 저장이 도는 것을 막는다 — 헤더의 title-input과 동일.
-            if (!next || next === note.title) {
-              e.currentTarget.textContent = note.title;
-              return;
-            }
-            onUpdateNote?.({ ...note, title: next });
-          }}
-          style={{ outline: "none" }}
-        >
-          {data.title}
-        </h1>
-
-        {/* Meta */}
-        <div className="doc-meta">
-          {note && <span>{formatDateTime(note.createdAt)}</span>}
-          {mode === "live" && (
-            <span className="live">
-              <span className="d" />
-              녹음 중
-            </span>
-          )}
-        </div>
-
-        {/* Properties */}
-        <div className="note-props">
-          <PropRow
-            icon={
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <rect x="2" y="3" width="12" height="11" rx="1.5" />
-                <line x1="2" y1="7" x2="14" y2="7" />
-                <line x1="5" y1="1.5" x2="5" y2="4.5" />
-                <line x1="11" y1="1.5" x2="11" y2="4.5" />
-              </svg>
-            }
-            label="회의 일시"
-            value={note?.meetingDate ?? (note ? formatDateTime(note.createdAt) : "")}
-            placeholder="날짜 및 시간 입력"
-            onSave={(v) => note && onUpdateNote?.({ ...note, meetingDate: v })}
-          />
-          <PropRow
-            icon={
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 1.5a4.5 4.5 0 014.5 4.5c0 3-4.5 8.5-4.5 8.5S3.5 9 3.5 6A4.5 4.5 0 018 1.5z" />
-                <circle cx="8" cy="6" r="1.5" />
-              </svg>
-            }
-            label="회의 장소"
-            value={note?.location ?? ""}
-            placeholder="장소 입력"
-            onSave={(v) => note && onUpdateNote?.({ ...note, location: v })}
-          />
-          <PropRow
-            icon={
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <circle cx="6" cy="5" r="2.5" />
-                <path d="M1 13a5 5 0 0110 0" />
-                <circle cx="12" cy="5" r="2" />
-                <path d="M14 13a3 3 0 00-3-3" />
-              </svg>
-            }
-            label="참석자"
-            value={
-              note?.attendees ??
-              (participantList.length > 0
-                ? participantList.map((p) => p.name || `화자 ${p.sp}`).join(", ")
-                : "")
-            }
-            placeholder="이름 입력 (쉼표로 구분)"
-            onSave={(v) => note && onUpdateNote?.({ ...note, attendees: v })}
-          />
-        </div>
-
+    <div className="overlay" role="dialog" aria-modal="true" aria-label="AI 분석 결과">
+      <div className="overlay-h">
+        <b>분석 결과</b>
+        <div className="spacer" />
+        <button className="btn" onClick={onClose}>닫기</button>
+      </div>
+      <div className="overlay-body">
         {/* Block 1: AI 정리 */}
         <div className="nblock">
           <div className="ai-block">
@@ -458,7 +323,10 @@ export default function NoteDocument({
                 </span>
               )}
               <div className="meta">
-                <button className="gen-btn" onClick={handleRegen} disabled={regenerating}>
+                {/* regenerating 타이머(1.5초)는 실제 분석 시간과 무관하다. analyzing까지
+                    함께 보지 않으면 버튼만 먼저 "다시 정리"로 돌아와, 바로 아래 본문이
+                    "AI 분석 중..."인 동안 다시 눌러 /api/analyze를 한 번 더 부를 수 있다. */}
+                <button className="gen-btn" onClick={handleRegen} disabled={regenerating || analyzing}>
                   {regenerating ? "생성 중..." : (
                     <>
                       <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -498,12 +366,9 @@ export default function NoteDocument({
               </ul>
             ) : (
               <p style={{ color: "var(--ink-4)", fontSize: 13 }}>
-                {/* 녹음이 끝나도 자동 분석은 하지 않는다. [다시 정리] 버튼은
-                    review 모드에서만(AppShell) 화면에 보이므로, live 모드에서는
-                    지금 누를 수 있는 버튼처럼 말하면 안 된다. */}
-                {mode === "live"
-                  ? "아직 정리하지 않았습니다. 녹음을 마치면 [다시 정리]를 눌러 AI가 요약합니다."
-                  : "아직 정리하지 않았습니다. [다시 정리]를 누르면 AI가 요약합니다."}
+                {/* 이 오버레이 안에는 [다시 정리] 버튼이 늘 있다(위 .meta). 화면 밖의
+                    버튼을 가리키던 mode 분기는 그래서 필요 없어졌다. */}
+                아직 정리하지 않았습니다. 위 [다시 정리]를 누르면 AI가 요약합니다.
               </p>
             )}
           </div>
@@ -790,28 +655,6 @@ export default function NoteDocument({
             <p style={{ color: "var(--ink-4)", fontSize: 13 }}>향후 일정이 없습니다.</p>
           )}
         </div>
-
-        {/* Block 7: 자유 메모 */}
-        <div className="nblock">
-          <div className="nblock-h">
-            <span className="ico"><IconNote /></span>
-            자유 메모
-          </div>
-          <div
-            contentEditable
-            suppressContentEditableWarning
-            onBlur={(e) => {
-              if (note) onUpdateNote?.({ ...note, memo: e.currentTarget.textContent ?? "" });
-            }}
-            style={{ outline: "none", fontSize: 13.5, lineHeight: 1.7, color: "var(--ink-2)", minHeight: 60 }}
-          >
-            {data.memo || ""}
-          </div>
-        </div>
-
-        <button className="add-block">
-          <span>+</span> 블록 추가
-        </button>
       </div>
     </div>
   );

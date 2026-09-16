@@ -7,8 +7,8 @@ import type {
 } from "@/types/meeting";
 import { hasNotionConfig, notionKeyHeaders, getNotionMapping } from "@/lib/apiKey";
 
-/** ms → "1:23:45" 또는 "2:05". 0이면 빈 문자열. */
-function formatDuration(ms: number): string {
+/** ms → "1:23:45" 또는 "2:05". 0이면 빈 문자열. 화면 표시와 Notion 저장이 같은 값을 쓴다. */
+export function formatDuration(ms: number): string {
   if (!ms || ms <= 0) return "";
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);

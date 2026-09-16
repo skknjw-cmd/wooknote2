@@ -18,7 +18,6 @@ interface LiveTranscriptProps {
   onToggleKeyword: (word: string) => void;
   onEditTurn: (id: number, newText: string) => void;
   onSplitTurn: (id: number, beforeText: string, afterText: string) => void;
-  reviewOffset?: number;
 }
 
 function formatElapsed(ms: number): string {
@@ -43,7 +42,6 @@ export default function LiveTranscript({
   onToggleKeyword,
   onEditTurn,
   onSplitTurn,
-  reviewOffset = 0,
 }: LiveTranscriptProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -54,7 +52,7 @@ export default function LiveTranscript({
   }, [turns, mode]);
 
   return (
-    <div className="tr-pane" style={{ paddingTop: reviewOffset }}>
+    <div className="tr-pane">
       {/* Header */}
       <div className="tr-head">
         <div className="h-title">

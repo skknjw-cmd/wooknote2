@@ -488,6 +488,9 @@ export default function Home() {
   async function handleRetryNotion() {
     // handleOpenNote가 노트 전환 시 notionStatus를 idle로 되돌리므로, 상태가 idle이 아닌 동안
     // currentNote는 방금 저장한 그 노트다. 화자명 수정 등 이후 편집까지 반영해 다시 올린다.
+    // idle일 때도 이 버튼이 뜰 수 있다(사이드바에서 다시 연, 이미 notionPageId가 있는 노트).
+    // 그 경우에도 currentNote는 지금 화면에 띄워 둔 바로 그 노트이고, notionTarget이
+    // note.notionPageId를 읽어 같은 페이지에 이어 붙이므로 대상은 어긋나지 않는다.
     const note = currentNote;
     if (!note) return;
     setNotionStatus({ kind: "saving" });
@@ -630,8 +633,8 @@ export default function Home() {
       // 라이브 모드는 await 전에 벗어난다. 마지막 청크를 기다리는 수 초 동안
       // 화면이 계속 "녹음 중"처럼 보이면 사용자가 다시 누르게 된다.
       setAppMode("review");
-      // 마지막 청크를 기다리는 수 초 동안 배너가 "녹음이 종료되었습니다"(idle)를 띄우면
-      // 아직 아무것도 저장되지 않았는데 끝났다고 거짓말을 하는 셈이다. 저장 중으로 먼저 바꾼다.
+      // 마지막 청크를 기다리는 수 초 동안 idle("아직 저장하지 않았습니다.")을 띄우면
+      // 실제로는 저장이 진행 중인데 멈춰 있는 것처럼 보인다. 저장 중으로 먼저 바꾼다.
       setNotionStatus({ kind: "saving" });
       try {
         await stt.stopRecording();
