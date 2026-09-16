@@ -10,10 +10,12 @@ import {
   getGeminiAccumulatedTokens, resetAccumulatedBilling,
   getNotionToken, setNotionToken,
   getNotionDbId, setNotionDbId,
+  getNotionMapping, setNotionMapping,
   type SttProvider,
 } from "@/lib/apiKey";
 import { isFolderPickerSupported } from "@/lib/folderStorage";
-import type { NoteRecord } from "@/types/meeting";
+import NotionConnectionPanel from "@/components/Settings/NotionConnectionPanel";
+import type { NoteRecord, NotionMappingConfig } from "@/types/meeting";
 
 interface ApiKeyModalProps {
   required?: boolean;
@@ -35,6 +37,7 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
   const [geminiTokens, setGeminiTokens] = useState(getGeminiAccumulatedTokens());
   const [notionToken, setNotionTokenState] = useState(getNotionToken());
   const [notionDbId, setNotionDbIdState] = useState(getNotionDbId());
+  const [notionMapping, setNotionMappingState] = useState<NotionMappingConfig | null>(getNotionMapping());
 
   const [saved, setSaved] = useState(false);
   const [show, setShow] = useState(false);
@@ -52,6 +55,7 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
     setGeminiPayAsYouGo(geminiPayAsYouGo);
     setNotionToken(notionToken);
     setNotionDbId(notionDbId);
+    setNotionMapping(notionMapping);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -311,61 +315,14 @@ export default function ApiKeyModal({ required = false, onClose, folderName, onP
           </div>
         )}
 
-        {/* Notion 연동 */}
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", marginBottom: 8 }}>
-            Notion 연동
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-3)", marginBottom: 4 }}>
-                Internal Integration Token
-              </div>
-              <input
-                type={show ? "text" : "password"}
-                value={notionToken}
-                onChange={(e) => setNotionTokenState(e.target.value)}
-                placeholder="ntn_..."
-                style={{
-                  width: "100%", padding: "9px 12px", fontSize: 13,
-                  border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)",
-                  background: "var(--surface)", color: "var(--ink)", outline: "none",
-                  fontFamily: "var(--font-mono)", boxSizing: "border-box",
-                }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-3)", marginBottom: 4 }}>
-                데이터베이스 ID 또는 URL
-              </div>
-              <input
-                type="text"
-                value={notionDbId}
-                onChange={(e) => setNotionDbIdState(e.target.value)}
-                placeholder="https://notion.so/... 또는 32자 ID"
-                style={{
-                  width: "100%", padding: "9px 12px", fontSize: 13,
-                  border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)",
-                  background: "var(--surface)", color: "var(--ink)", outline: "none",
-                  fontFamily: "var(--font-mono)", boxSizing: "border-box",
-                }}
-              />
-            </div>
-          </div>
-          <div style={{
-            fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.6,
-            background: "var(--surface-2)", borderRadius: "var(--r-sm)",
-            padding: "8px 10px", marginTop: 10,
-          }}>
-            회의가 끝나면 AI 분석 없이 이 데이터베이스에 바로 저장됩니다.
-            Notion에서 <strong>통합(Integration)을 해당 데이터베이스에 초대</strong>해야 합니다.
-            속성 이름을 <code>회의일시</code>(날짜) · <code>참석자</code>(텍스트) ·{" "}
-            <code>소요시간</code>(텍스트) · <code>상태</code>(선택) · <code>입력방식</code>(선택)으로
-            만들면 함께 채워지며, 없는 속성은 건너뜁니다. 이때 <code>상태</code>는 반드시{" "}
-            <strong>선택(Select)</strong> 타입으로 만드세요 — Notion 한국어 UI가 기본으로 만드는
-            상태(Status) 타입은 API가 옵션을 추가할 수 없어 건너뜁니다.
-          </div>
-        </div>
+        <NotionConnectionPanel
+          token={notionToken}
+          databaseId={notionDbId}
+          mapping={notionMapping}
+          onTokenChange={setNotionTokenState}
+          onDatabaseIdChange={setNotionDbIdState}
+          onMappingChange={setNotionMappingState}
+        />
 
         {/* 요금 통계 대시보드 */}
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 16 }}>
