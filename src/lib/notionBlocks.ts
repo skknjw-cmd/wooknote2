@@ -159,6 +159,17 @@ function resolveChoice(
   return { reason: "" };
 }
 
+/**
+ * 앞말에 조사 와/과를 붙인다. 한국어는 앞 글자의 받침 유무로 둘을 가른다.
+ * 한글 음절(U+AC00..U+D7A3)은 `(코드 - 0xAC00) % 28`이 0이 아니면 받침이 있다.
+ * 한글이 아닌 글자로 끝나면 판단할 수 없으므로 "와"로 둔다.
+ */
+function withWaGwa(word: string): string {
+  const code = word.charCodeAt(word.length - 1);
+  const hasFinal = code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
+  return `${word}${hasFinal ? "과" : "와"}`;
+}
+
 /** skipped에 남길 문자열. 매핑된 경우 어느 속성을 노렸는지 함께 적는다. */
 function skipLabel(fieldLabel: string, target: string | null, reason: string): string {
   if (target === null) return reason ? `${fieldLabel}(${reason})` : fieldLabel;
@@ -211,13 +222,20 @@ export function filterProperties(
     const m = fields?.[plan.key];
     if (m && m.property === null) continue; // 일부러 쓰지 않는 필드
     const target = m?.property ?? plan.name;
-    if (schema[target]?.type !== plan.type) {
+    const prop = schema[target];
+    if (prop === undefined) {
+      // 속성이 아예 없는 것과 타입이 다른 것은 사용자가 할 일이 다르다.
+      // 둘을 뭉뚱그리면 "그 속성은 date가 아니다"라는 거짓을 말하게 된다.
+      skipped.push(skipLabel(plan.name, m ? target : null, m ? "없는 속성" : ""));
+      continue;
+    }
+    if (prop.type !== plan.type) {
       skipped.push(skipLabel(plan.name, m ? target : null, m ? `${plan.type} 아님` : ""));
       continue;
     }
     if (target in properties) {
       // 다른 필드가 이미 같은 속성을 차지함 — 먼저 온 값을 지키고 이유를 남긴다.
-      skipped.push(skipLabel(plan.name, m ? target : null, `${claimedBy[target]}와 같은 속성`));
+      skipped.push(skipLabel(plan.name, m ? target : null, `${withWaGwa(claimedBy[target])} 같은 속성`));
       continue;
     }
     properties[target] = plan.value;
@@ -238,7 +256,7 @@ export function filterProperties(
     const target = m?.property ?? plan.name;
     if (target in properties) {
       // 다른 필드가 이미 같은 속성을 차지함 — 먼저 온 값을 지키고 이유를 남긴다.
-      skipped.push(skipLabel(plan.name, m ? target : null, `${claimedBy[target]}와 같은 속성`));
+      skipped.push(skipLabel(plan.name, m ? target : null, `${withWaGwa(claimedBy[target])} 같은 속성`));
       continue;
     }
     const resolved = resolveChoice(schema[target], optionName);

@@ -374,7 +374,7 @@ describe("filterProperties — 매핑", () => {
     const schema = { 이름: { type: "title" } };
     const fields: Fields = { meetingDate: { property: "없는속성" } };
     const { skipped } = filterProperties(schema, payload, fields);
-    expect(skipped).toContain("회의일시(→없는속성: date 아님)");
+    expect(skipped).toContain("회의일시(→없는속성: 없는 속성)");
   });
 
   it("매핑 대상의 타입이 안 맞으면 이유와 함께 skipped", () => {
@@ -446,7 +446,7 @@ describe("filterProperties — 매핑", () => {
     };
     const { properties, skipped } = filterProperties(schema, payload, fields);
     expect(properties["메모"]).toEqual({ rich_text: [{ text: { content: "1:23:45" } }] });
-    expect(skipped).toContain("상태(→메모: 소요시간와 같은 속성)");
+    expect(skipped).toContain("상태(→메모: 소요시간과 같은 속성)");
   });
 
   it("서로 다른 속성을 가리키면 충돌 없이 둘 다 채워진다", () => {
@@ -470,6 +470,23 @@ describe("filterProperties — 매핑", () => {
     const fields: Fields = { status: { property: "이름" } };
     const { properties, skipped } = filterProperties(schema, payload, fields);
     expect(properties["이름"]).toEqual({ title: [{ text: { content: "주간 회의" } }] });
-    expect(skipped).toContain("상태(→이름: 이름와 같은 속성)");
+    expect(skipped).toContain("상태(→이름: 이름과 같은 속성)");
+  });
+
+  it("충돌 사유의 조사는 앞 라벨의 받침에 따라 과/와로 갈린다", () => {
+    // 받침 있음 — "이름" + 과. title 충돌 경로.
+    const titleSchema = { 이름: { type: "title" } };
+    const titleFields: Fields = { status: { property: "이름" } };
+    const withFinal = filterProperties(titleSchema, payload, titleFields);
+    expect(withFinal.skipped).toContain("상태(→이름: 이름과 같은 속성)");
+
+    // 받침 없음 — "참석자" + 와.
+    const memoSchema = { 이름: { type: "title" }, 메모: { type: "rich_text" } };
+    const memoFields: Fields = {
+      attendees: { property: "메모" },
+      durationText: { property: "메모" },
+    };
+    const withoutFinal = filterProperties(memoSchema, payload, memoFields);
+    expect(withoutFinal.skipped).toContain("소요시간(→메모: 참석자와 같은 속성)");
   });
 });

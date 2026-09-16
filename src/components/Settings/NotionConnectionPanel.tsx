@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { extractDatabaseId } from "@/lib/apiKey";
 import type {
   NotionFieldKey,
@@ -52,20 +52,38 @@ export default function NotionConnectionPanel({
   const [result, setResult] = useState<
     { dataSourceId: string; dataSourceName: string; properties: PropertyInfo[] } | null
   >(null);
-  const [staleNotice, setStaleNotice] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const canTest = token.trim().length > 0 && databaseId.trim().length > 0 && !testing;
 
+  // 토큰이나 DB ID가 바뀌면 이전 결과는 더 이상 그 자격증명의 것이 아니다.
+  // 남겨 두면 다른 DB의 속성 목록에서 매핑을 고르게 되고, 저장할 때마다 무시된다.
+  // 테스트 도중에는 두 값이 바뀌지 않으므로 방금 받은 결과를 지우지 않는다.
+  useEffect(() => {
+    setResult(null);
+    setError(null);
+    setNotice(null);
+  }, [token, databaseId]);
+
   async function handleTest() {
+    // 서버에 보내는 값은 원문이 아니라 여기서 뽑아낸 32자 ID다. 뽑히지 않으면
+    // 서버는 "ID가 없습니다"라고 답하는데, 사용자는 분명히 입력했으므로 거짓말이 된다.
+    const dbId = extractDatabaseId(databaseId);
+    if (!dbId) {
+      setError("입력한 값에서 데이터베이스 ID를 찾지 못했습니다. 데이터베이스 URL이나 32자 ID를 넣어 주세요.");
+      setResult(null);
+      setNotice(null);
+      return;
+    }
     setTesting(true);
     setError(null);
-    setStaleNotice(false);
+    setNotice(null);
     try {
       const res = await fetch("/api/notion/schema", {
         method: "POST",
         headers: {
           "x-notion-token": token.trim(),
-          "x-notion-db": extractDatabaseId(databaseId),
+          "x-notion-db": dbId,
         },
       });
       const data = (await res.json().catch(() => null)) as NotionSchemaResponse | null;
@@ -86,8 +104,31 @@ export default function NotionConnectionPanel({
       });
       // 저장된 매핑이 다른 DB의 것이면 복원하지 않고 알린다.
       if (mapping && mapping.dataSourceId !== data.dataSourceId) {
-        setStaleNotice(true);
+        setNotice("다른 데이터베이스의 매핑이라 [저장]을 누르면 지워집니다. 다시 설정해 주세요.");
         onMappingChange(null);
+        return;
+      }
+      // 같은 DB라도 Notion에서 속성 이름이 바뀌면 매핑이 없는 속성을 가리킨 채 남는다.
+      // 그 항목은 드롭다운 후보에 없어 빈 칸으로 그려지므로, 사용자가 손대지 않으면
+      // [저장] 때 죽은 값이 그대로 다시 저장된다. 여기서 털어내고 알린다.
+      if (mapping?.fields) {
+        const names = new Set(data.properties.map((p) => p.name));
+        const entries = Object.entries(mapping.fields) as Array<[NotionFieldKey, NotionFieldMapping]>;
+        // property가 null인 항목은 사용자가 일부러 고른 "(사용 안 함)"이므로 건드리지 않는다.
+        const alive = entries.filter(([, v]) => v.property === null || names.has(v.property));
+        if (alive.length < entries.length) {
+          const dropped = entries
+            .filter(([, v]) => v.property !== null && !names.has(v.property))
+            .map(([k]) => FIELDS.find((f) => f.key === k)?.label ?? k);
+          onMappingChange({
+            dataSourceId: data.dataSourceId,
+            dataSourceName: data.dataSourceName,
+            fields: Object.fromEntries(alive),
+          });
+          setNotice(
+            `${dropped.join(", ")} 매핑이 Notion에 없는 속성을 가리켜 [저장]을 누르면 지워집니다.`,
+          );
+        }
       }
     } catch {
       setError("서버에 연결할 수 없습니다.");
@@ -175,19 +216,26 @@ export default function NotionConnectionPanel({
         </div>
       )}
 
+      {/* 테스트 전에도 지난번에 어느 DB에 맞춰 설정했는지 알려 준다. */}
+      {!result && mapping?.dataSourceName && (
+        <div style={{ fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.6, marginTop: 10 }}>
+          저장된 매핑: <strong>{mapping.dataSourceName}</strong>
+        </div>
+      )}
+
       {result && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 8 }}>
             ✓ <strong>{result.dataSourceName || "(제목 없음)"}</strong> · 속성 {result.properties.length}개
           </div>
 
-          {staleNotice && (
+          {notice && (
             <div style={{
               fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.6,
               background: "var(--surface-2)", borderRadius: "var(--r-sm)",
               padding: "8px 10px", marginBottom: 8,
             }}>
-              다른 데이터베이스의 매핑이라 초기화했습니다. 다시 설정해 주세요.
+              {notice}
             </div>
           )}
 
