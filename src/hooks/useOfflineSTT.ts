@@ -35,7 +35,30 @@ export function useOfflineSTT(): STTState {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [sttError, setSttError] = useState<string | null>(null);
 
-  const lastChunkRef = useRef<Promise<void>>(Promise.resolve());
+  /**
+   * 아직 끝나지 않은 청크 처리들. 예전에는 Promise 하나를 청크마다 덮어쓰고 중지할 때
+   * 그 마지막 하나만 기다렸다. STT가 청크 주기(15초)보다 오래 걸리면 청크가 겹쳐 날아가고,
+   * 앞 청크의 응답이 clearSession() 뒤에 도착하면 onChunkRef가 이미 null이라 그 발화가
+   * 조용히 사라졌다 — 회의 내용이 없어지는데 아무 말도 하지 않는다.
+   * 전부 담아 두고 중지할 때 모두 기다린다.
+   */
+  const pendingChunksRef = useRef<Set<Promise<void>>>(new Set());
+
+  /** 청크 처리를 등록하고 끝나면 스스로 빠진다. */
+  function trackChunk(p: Promise<void>): Promise<void> {
+    pendingChunksRef.current.add(p);
+    void p.finally(() => pendingChunksRef.current.delete(p));
+    return p;
+  }
+
+  /** 지금 날아가 있는 청크가 모두 끝날 때까지 기다린다. 하나가 실패해도 나머지를 기다린다. */
+  async function drainChunks(): Promise<void> {
+    // 기다리는 동안 새 청크가 들어올 수 있으므로(마지막 청크가 늦게 도착하는 경우)
+    // 비워질 때까지 반복한다.
+    while (pendingChunksRef.current.size > 0) {
+      await Promise.allSettled([...pendingChunksRef.current]);
+    }
+  }
   // 청크 간 화자 레이블 연속성 유지: 모델이 반환한 "A","B","C" → 일관된 sp 번호
   // STT 프롬프트 힌트(prevContext)용으로도 쓰이므로 나중에 정리할 때 지우지 말 것
   const speakerLetterMapRef = useRef<Map<string, number>>(new Map());
@@ -182,7 +205,7 @@ export function useOfflineSTT(): STTState {
     const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64000 });
 
     recorder.ondataavailable = (e) => {
-      if (e.data.size) lastChunkRef.current = processChunk(e.data, chunkStartMs);
+      if (e.data.size) trackChunk(processChunk(e.data, chunkStartMs));
     };
 
     recorder.onstop = () => {
@@ -306,16 +329,16 @@ export function useOfflineSTT(): STTState {
 
     if (!recorder || recorder.state !== "recording") {
       stream?.getTracks().forEach((t) => t.stop());
-      return lastChunkRef.current.then(clearSession);
+      return drainChunks().then(clearSession);
     }
 
     return new Promise<void>((resolve) => {
       recorder.ondataavailable = (e) => {
-        if (e.data.size) lastChunkRef.current = processChunk(e.data, elapsedMsRef.current);
+        if (e.data.size) trackChunk(processChunk(e.data, elapsedMsRef.current));
       };
       recorder.onstop = async () => {
         stream?.getTracks().forEach((t) => t.stop());
-        await lastChunkRef.current;
+        await drainChunks();
         clearSession();
         resolve();
       };
