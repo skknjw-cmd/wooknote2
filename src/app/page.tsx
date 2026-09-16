@@ -216,6 +216,9 @@ export default function Home() {
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioProgress, setAudioProgress] = useState<{ current: number; total: number } | undefined>();
   const [analyzing, setAnalyzing] = useState(false);
+  // analyzing과 나누는 이유: 텍스트 제출은 AI를 부르지 않고 Notion에만 저장한다.
+  // 한 변수로 둘을 나타내면 2단계에서 이 prop을 옮길 때 잘못된 문구가 따라간다.
+  const [savingToNotion, setSavingToNotion] = useState(false);
   const [notionStatus, setNotionStatus] = useState<NotionSaveState>({ kind: "idle" });
 
   // ── 녹음 세션 상태 (녹음 1회 동안만 유효) ──
@@ -703,10 +706,8 @@ export default function Home() {
     if (!currentNote) setCurrentNote(note);
 
     // AI 분석 없이 바로 저장한다. 분석은 "다시 정리" 버튼에서만 실행된다.
-    // 여기서 analyzing은 AI 호출이 아니라 finalizeNote의 Notion 저장 진행 상태를 나타낸다
-    // (버튼 스피너 표시 + 중복 클릭으로 인한 Notion 페이지 중복 생성 방지).
     const textTurns = parseTextToTurns(data.text);
-    setAnalyzing(true);
+    setSavingToNotion(true);
     try {
       await finalizeNote({
         ...note,
@@ -715,7 +716,7 @@ export default function Home() {
         meetingDate: data.date || note.meetingDate,
       });
     } finally {
-      setAnalyzing(false);
+      setSavingToNotion(false);
     }
     setAppMode("review");
     setScreen("live");
@@ -895,7 +896,7 @@ export default function Home() {
   }
 
   if (screen === "text") {
-    return <TextInputPanel onSubmit={handleTextSubmit} onBack={() => setScreen("mode-select")} loading={analyzing} />;
+    return <TextInputPanel onSubmit={handleTextSubmit} onBack={() => setScreen("mode-select")} loading={savingToNotion} />;
   }
 
   if (screen === "audio") {
